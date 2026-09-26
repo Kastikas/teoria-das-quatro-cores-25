@@ -1,2 +1,7 @@
 /target
 anc_tools/
+*.aux
+*.log
+*.out
+outlet.et
+test_*.conf
