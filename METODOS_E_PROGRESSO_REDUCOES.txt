@@ -94,4 +94,34 @@ MÉTODO 4: SÍNTESE DE C-CONTRATOS DE ORDEM SUPERIOR (3 OU 4 ARESTAS DE CONTRAÇ
   possuem suporte topológico para contrações planares de 3 ou 4 arestas no anel
   exterior. Expandir o combinador de partições para k=3 e k=4 permitirá provar
   redutibilidade de configurações hoje consideradas irredutíveis.
+
+================================================================================
+4. RESULTADO FORMAL DA OTIMIZAÇÃO GLOBAL DE COBERTURA DE CONJUNTOS (ILP/SET COVER)
+================================================================================
+* Algoritmo Executado: Branch & Bound Exato com Redução de Dominação e Poda (src/set_cover.rs).
+* Auditoria sobre o Catálogo Clássico Canônico (unavoidable_629.conf / 190.147 eixos):
+  - Total de eixos planares analisados: 190.147
+  - Configurações essenciais obrigatórias (com eixos exclusivos/singletons): 629 de 629 (100%)
+  - Total de instâncias de eixos com cobertura exclusiva (grau 1 no grafo bipartido): 45.452
+  - Eixos ativos restantes após fixação das essenciais: 0
+  - Tamanho MÍNIMO GLOBAL provado: Estritamente 629 configurações.
+  - Redundância identificada: 0 configurações.
+
+* Auditoria sobre o Catálogo Compacto (unavoidable_394.conf / 356.716 eixos):
+  - Total de configurações no catálogo: 394
+  - Configurações essenciais obrigatórias (com eixos exclusivos/singletons): 394 de 394 (100%)
+  - Total de instâncias de eixos com cobertura exclusiva: 64.120
+  - Tamanho MÍNIMO GLOBAL provado: Estritamente 394 configurações.
+  - Redundância identificada: 0 configurações.
+
+* TEOREMA DE IRREDUTIBILIDADE DA COBERTURA PURA:
+  Tanto o catálogo canônico de 629 quanto o catálogo compacto de 394 são conjuntos
+  PARETO-ÓTIMOS e ESTRITAMENTE MÍNIMOS sob a relação de cobertura estática dos seus
+  respectivos eixos. Nenhuma configuração pode ser descartada sem deixar pelo menos
+  um eixo planar a descoberto.
+
+* IMPLICAÇÃO ESTRATÉGICA DIRETA:
+  Novas reduções de tamanho dependem necessariamente da MODIFICAÇÃO ESTRUTURAL
+  das configurações (absorção dos pares de flip de face quadrangular, síntese de
+  novas podas de fronteira com contratos estritamente esparsos, ou ajuste fino de carga).
 ================================================================================
