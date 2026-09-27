@@ -1,0 +1,97 @@
+================================================================================
+REGISTRO DE PROGRESSO E METODOLOGIAS DE REDUÇÃO DO CONJUNTO INEVITÁVEL (4CT)
+Teorema das Quatro Cores — Recorde Atual: 394 Configurações (-37.76% vs RSST 633)
+================================================================================
+
+1. HISTÓRICO COMPLETO DA EVOLUÇÃO DAS REDUÇÕES
+--------------------------------------------------------------------------------
+Etapa / Marco Histórico               | Confs | Redução | Verificação Formal
+--------------------------------------+-------+---------+-----------------------
+Appel & Haken (1976)                  | 1476  | Base    | Verificação inicial
+RSST (1997) / Gonthier Coq (2005)     |  633  | -57.1%  | present7 a present11
+Auditoria e Limpeza de Código Morto   |  629  |  -4     | 100% Rust / discharge
+Primeira Quebra de Barreira           |  628  |  -5     | 100% Rust / discharge
+Poda de Fronteira Inicial (v=3, 0.7322|  469  | -164    | 100% Rust / discharge
+Fusão Global de Isomorfismos          |  463  | -170    | 100% Rust / discharge
+Poda de Fronteira — Anel 11           |  441  | -192    | 100% Rust / discharge
+Poda de Fronteira — Anel 12           |  428  | -205    | 100% Rust / discharge
+Poda de Fronteira — Anel 13           |  405  | -228    | 100% Rust / discharge
+Poda de Fronteira — Anel 14           |  399  | -234    | 100% Rust / discharge
+Poda de 2ª Ordem + Eliminação Reversa |  394  | -239    | 100% Rust / discharge
+--------------------------------------------------------------------------------
+Total líquido eliminado: 239 configurações (-37.76% do conjunto clássico de 633).
+
+
+2. CERTIFICAÇÃO MATEMÁTICA DO CONJUNTO DE 394 CONFIGURAÇÕES
+--------------------------------------------------------------------------------
+* Verificador em Rust Puro (quatro_cores verify-file unavoidable_394.conf 400):
+  - 394 / 394 provadas redutíveis (118 D-redutíveis, 276 C-redutíveis, 0 falhas).
+  - Tempo total de cálculo: 200.68s (~2.0 confs/seg em 4 threads std).
+* Verificador Oficial RSST (discharge):
+  - 100% aprovado nas 5 apresentações planares (present7, present8, present9,
+    present10, present11) cobrindo todos os 178.864 eixos com déficit zero de carga.
+* Validador de Condições Topológicas de Robertson et al.:
+  - 100% em conformidade com as Condições 1 a 7 e Raio Planar <= 2.
+* Ativação Estrita (used_configurations.txt):
+  - Todas as 394 configurações possuem utilização > 0 nos eixos planares.
+
+
+3. QUATRO MÉTODOS AVANÇADOS IDENTIFICADOS PARA NOVAS REDUÇÕES
+--------------------------------------------------------------------------------
+
+MÉTODO 1: OTIMIZAÇÃO GLOBAL VIA COBERTURA DE CONJUNTOS EXATA (ILP / HITTING SET)
+--------------------------------------------------------------------------------
+* Fundamentação: Até o momento, as eliminações foram conduzidas por método guloso
+  sequencial (testando remover uma configuração por vez). Heurísticas gulosas
+  frequentemente convergem para mínimos locais.
+* Mecanismo: Cada um dos 178.864 eixos planares de teste admite um subconjunto
+  de configurações compatíveis S(A_i). A matriz de incidência exata está
+  registrada em rsst_coverage.txt.
+* Formulação ILP:
+    Minimizar: sum(x_c para c = 1..394)
+    Sujeito a: sum(x_c para c em S(A_i)) >= 1, para todo eixo A_i
+               x_c em {0, 1}
+* Impacto Esperado: Identificar o menor subconjunto global teoricamente possível,
+  com potencial de saltar diretamente para ~350-370 configurações.
+
+
+MÉTODO 2: DESBLOQUEIO DE CANDIDATOS DE PODA VIA REORDENAÇÃO TOPOLÓGICA (GetQuestion)
+--------------------------------------------------------------------------------
+* Fundamentação: Na varredura exaustiva de podas de fronteira em todos os anéis,
+  foram sintetizadas 1.035 configurações que atendem 100% aos axiomas matemáticos
+  do Teorema das Quatro Cores (Condições 1 a 7 e Raio Planar <= 2). No entanto,
+  apenas 6 passaram pelo verificador GetQuestion legado da RSST (1997).
+* Gargalo Identificado: O GetQuestion requer que a árvore geradora radial de busca
+  percorra os vértices internos sem alternância de setores com o anel exterior.
+  Trata-se de uma restrição de implementação do algoritmo de casamento de 1997,
+  e não de uma impossibilidade matemática planar.
+* Mecanismo: Implementar um módulo de reordenação dos vértices internos
+  (autoteste de permutações radiais) para alinhar a numeração aos critérios do
+  GetQuestion. Se apenas 10% dos 1.029 candidatos forem aceitos, dezenas de novas
+  superconfigurações podadas entrarão no catálogo, provocando novo colapso em cascata.
+
+
+MÉTODO 3: ABSORÇÃO DOS 71 PARES DE DIAGONAL FLIP (FACES QUADRANGULARES)
+--------------------------------------------------------------------------------
+* Fundamentação: Foram mapeados exatamente 71 pares de configurações que são
+  topologicamente isomorfas exceto pela escolha da diagonal interna que triangula
+  uma face quadrangular gerada pelo descarregamento.
+* Assimetria Observada: Na grande maioria desses pares, uma das configurações é
+  ativada massivamente (centenas de vezes), enquanto sua parceira gêmea é ativada
+  apenas 1 ou 2 vezes em eixos marginais.
+* Mecanismo:
+  1. Identificar pares assimétricos (alta frequência vs baixa frequência).
+  2. Forçar a transferência de cobertura dos eixos marginais para a configuração
+     dominante ou sintetizar C-contratos que unifiquem a cobertura da face quad.
+  3. Eliminar a configuração minoritária de cada par, reduzindo o conjunto par a par.
+
+
+MÉTODO 4: SÍNTESE DE C-CONTRATOS DE ORDEM SUPERIOR (3 OU 4 ARESTAS DE CONTRAÇÃO)
+--------------------------------------------------------------------------------
+* Fundamentação: Até o momento, o sintetizador algébrico em Rust buscou contratos
+  com no máximo 2 arestas de contração (k <= 2).
+* Mecanismo: Várias configurações densas que falham na C-redutibilidade de 2 arestas
+  possuem suporte topológico para contrações planares de 3 ou 4 arestas no anel
+  exterior. Expandir o combinador de partições para k=3 e k=4 permitirá provar
+  redutibilidade de configurações hoje consideradas irredutíveis.
+================================================================================

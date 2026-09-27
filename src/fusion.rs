@@ -1,4 +1,4 @@
-use crate::graph::{find_angles, validate_sparse_contract, Configuration};
+use crate::graph::{find_angles, strip, validate_sparse_contract, Configuration, VERTS};
 use crate::reducibility::ReducibilityEngine;
 use std::collections::HashMap;
 
@@ -34,19 +34,45 @@ pub fn synthesize_contract(
     let total_edges = angles.edges;
     let internal_edge_indices: Vec<usize> = ((ring + 1)..=total_edges).collect();
 
-    // Map each edge index back to (u, v) vertex pair
+    // Map each internal edge index back to (u, v) vertex pair in O(V^2) via strip()
+    let mut edgeno = [[0usize; VERTS]; VERTS];
+    let _ = strip(&clean_conf.mat, &mut edgeno);
     let mut edge_to_verts = HashMap::new();
-    let verts = clean_conf.verts();
-    for u in 1..=verts {
-        for v in (u + 1)..=verts {
-            let mut test_c = clean_conf.clone();
-            test_c.contract_edges = vec![(u, v)];
-            let test_angles = find_angles(&test_c);
-            for e in (ring + 1)..=total_edges {
-                if test_angles.contract[e] == 1 {
-                    edge_to_verts.insert(e, (u, v));
-                    break;
-                }
+    for u in 1..=clean_conf.verts() {
+        for v in (u + 1)..=clean_conf.verts() {
+            let e = edgeno[u][v];
+            if e > ring && e <= total_edges {
+                edge_to_verts.insert(e, (u, v));
+            }
+        }
+    }
+
+    // Precompute triangle conflict matrix: conflicts[e1][e2] == true if e1 and e2 share a triangle.
+    // In Robertson et al. (RSST 1997 reduce.c), a contract is strictly sparse iff no two edges share a triangle.
+    let mut conflicts = vec![vec![false; total_edges + 1]; total_edges + 1];
+    for v in 1..=clean_conf.verts() {
+        let deg = clean_conf.mat[v][0];
+        for h in 1..=deg {
+            if v <= ring && h == deg {
+                continue;
+            }
+            let i = if h < deg { h + 1 } else { 1 };
+            let u = clean_conf.mat[v][h];
+            let w = clean_conf.mat[v][i];
+            let a = edgeno[v][w];
+            let b = edgeno[u][w];
+            let c = edgeno[u][v];
+            if a > 0 && b > 0 {
+                conflicts[a][b] = true;
+                conflicts[b][a] = true;
+            }
+            if a > 0 && c > 0 {
+                conflicts[a][c] = true;
+                conflicts[c][a] = true;
+            }
+            if b > 0 && c > 0 {
+                conflicts[b][c] = true;
+                conflicts[c][b] = true;
             }
         }
     }
@@ -86,6 +112,9 @@ pub fn synthesize_contract(
             };
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
+                if conflicts[e1][e2] {
+                    continue; // Skip non-sparse pair in O(1)
+                }
                 let (u2, v2) = match edge_to_verts.get(&e2) {
                     Some(&p) => p,
                     None => continue,
@@ -119,12 +148,18 @@ pub fn synthesize_contract(
             };
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
+                if conflicts[e1][e2] {
+                    continue; // Skip non-sparse pair in O(1)
+                }
                 let (u2, v2) = match edge_to_verts.get(&e2) {
                     Some(&p) => p,
                     None => continue,
                 };
                 for k in (j + 1)..n_edges {
                     let e3 = internal_edge_indices[k];
+                    if conflicts[e1][e3] || conflicts[e2][e3] {
+                        continue; // Skip non-sparse triplet in O(1)
+                    }
                     let (u3, v3) = match edge_to_verts.get(&e3) {
                         Some(&p) => p,
                         None => continue,
@@ -159,18 +194,27 @@ pub fn synthesize_contract(
             };
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
+                if conflicts[e1][e2] {
+                    continue;
+                }
                 let (u2, v2) = match edge_to_verts.get(&e2) {
                     Some(&p) => p,
                     None => continue,
                 };
                 for k in (j + 1)..n_edges {
                     let e3 = internal_edge_indices[k];
+                    if conflicts[e1][e3] || conflicts[e2][e3] {
+                        continue;
+                    }
                     let (u3, v3) = match edge_to_verts.get(&e3) {
                         Some(&p) => p,
                         None => continue,
                     };
                     for l in (k + 1)..n_edges {
                         let e4 = internal_edge_indices[l];
+                        if conflicts[e1][e4] || conflicts[e2][e4] || conflicts[e3][e4] {
+                            continue;
+                        }
                         let (u4, v4) = match edge_to_verts.get(&e4) {
                             Some(&p) => p,
                             None => continue,
