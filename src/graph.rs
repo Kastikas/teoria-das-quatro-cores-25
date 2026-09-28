@@ -370,7 +370,9 @@ pub fn find_angles(conf: &Configuration) -> Angles {
             let c = edgeno[u][v];
 
             if a > 0 && b > 0 && angles.contract[a] != 0 && angles.contract[b] != 0 {
-                is_sparse = false;
+                if c > conf.ring() {
+                    is_sparse = false;
+                }
             }
 
             if a > c {

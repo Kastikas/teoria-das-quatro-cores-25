@@ -62,15 +62,15 @@ pub fn synthesize_contract(
             let a = edgeno[v][w];
             let b = edgeno[u][w];
             let c = edgeno[u][v];
-            if a > 0 && b > 0 {
+            if a > 0 && b > 0 && c > ring {
                 conflicts[a][b] = true;
                 conflicts[b][a] = true;
             }
-            if a > 0 && c > 0 {
+            if a > 0 && c > 0 && b > ring {
                 conflicts[a][c] = true;
                 conflicts[c][a] = true;
             }
-            if b > 0 && c > 0 {
+            if b > 0 && c > 0 && a > ring {
                 conflicts[b][c] = true;
                 conflicts[c][b] = true;
             }

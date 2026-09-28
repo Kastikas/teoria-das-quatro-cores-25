@@ -1,6 +1,0 @@
-Degree 7
-L0 C  1 -5  
-  L1 C  2 -5  
-    L2 C  3 -5  
-      L3 C  4 -5  
-        L4 R 

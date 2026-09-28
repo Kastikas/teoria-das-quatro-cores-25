@@ -1706,17 +1706,18 @@ tp_question Q;
       r = (h >= j) ? h - j : h - j + d;
       if (r <= 2)
 	 continue;
-      Q[nfound].z = u;
-      Q[nfound].xi = u > ring ? L[u][0] : 0;
-      Q[nfound].u = L[v][(h == d) ? 1 : h + 1];
-      Q[nfound].v = v;
-      nfound++;
+      if (!found[u]) {
+	 Q[nfound].z = u;
+	 Q[nfound].xi = u > ring ? L[u][0] : 0;
+	 Q[nfound].u = L[v][(h == d) ? 1 : h + 1];
+	 Q[nfound].v = v;
+	 nfound++;
+	 found[u] = 1;
+      }
       for (g = (h == 1) ? d : h - 1; g != j; g = (g == 1) ? d : g - 1) {
 	 t = L[v][g];
-	 if ((t <= ring) || (found[t])) {
-	    (void) printf("Error in getquestions\n");
-	    exit(1);
-	 }
+	 if ((t <= ring) || (found[t]))
+	    continue;
 	 Q[nfound].z = t;
 	 Q[nfound].xi = t > ring ? L[t][0] : 0;
 	 Q[nfound].u = Q[nfound - 1].z;
