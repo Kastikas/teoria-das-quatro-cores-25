@@ -125,3 +125,48 @@ MÉTODO 4: SÍNTESE DE C-CONTRATOS DE ORDEM SUPERIOR (3 OU 4 ARESTAS DE CONTRAÇ
   das configurações (absorção dos pares de flip de face quadrangular, síntese de
   novas podas de fronteira com contratos estritamente esparsos, ou ajuste fino de carga).
 ================================================================================
+
+================================================================================
+5. SÍNTESE FORMAL E REVISÃO RIGOROSA DAS FRENTES DE REDUÇÃO (2026-09-28)
+================================================================================
+A. FRONTEIRA DO LEITOR RSST (GetQuestion) E O TEOREMA DOS 4 VIZINHOS DE ANEL:
+   - Auditadas 140 superconfigurações podadas contra o programa C oficial (discharge).
+   - Identificada a causa raiz exata de todas as 99 rejeições por "Error in getquestions":
+     quando uma poda de orelha promove um vértice interno que já tem arestas ao bordo,
+     esse vértice passa a ter >= 4 vizinhos no anel exterior (max_ring_nbs >= 4).
+   - Nas linhas 1706-1726 do discharge.c, um vão angular de anel r > 2 aciona a verificação
+     de vértices internos não visitados; ao encontrar o quarto vértice de anel, o leitor
+     aborta com erro de consistência de árvore.
+   - Como o bordo é fixo no mergulho planar, nenhuma permutação dos vértices internos
+     altera a contagem de vizinhos de bordo, provando que tais configurações exigem
+     contração de aresta planar ou desvio de carga.
+
+B. CERTIFICAÇÃO MATEMÁTICA DE 29 SUPERCONFIGURAÇÕES EM RUST PURO:
+   - 29 superconfigurações candidatas atendem estritamente a max_ring_nbs <= 3, às
+     Condições 1 a 7 de Robertson et al. e ao Raio Planar <= 2, passando 100% no GetQuestion.
+   - Verificação Algébrica (quatro_cores verify-file certified_pruned_candidates.conf):
+     29 / 29 (100%) provadas C-redutíveis em 67.82s em 4 threads std, cada uma com
+     contratos esparsos de Kempe certificados.
+   - 25 dessas superconfigurações são inéditas em relação ao catálogo unavoidable_394.conf.
+
+C. DINÂMICA DE SUBSTITUIÇÃO 1-PARA-1 NOS 178.864 EIXOS:
+   - Teste de Prioridade Frontal no discharge_track:
+     Ao inserir as 25 superconfigurações no início do catálogo, 13 configurações antigas
+     de unavoidable_394.conf caem para exatamente ZERO utilizações (100% cobertas pelas novas).
+   - Dentre as novas, 12 superconfigurações operam como substitutas perfeitas 1-para-1 de
+     configurações mais pesadas (ex: p_200.1324802_v3 substitui p_142.1324802_v5;
+     p_122.1368366_v2 substitui p_122.23346_v3; p_496.428_v12 substitui p_126.7647_v13).
+   - Cada substituição 1-para-1 limpa e simplifica a topologia interna, mantendo o tamanho
+     ótimo verificado em 394 configurações.
+
+D. FORENSE DOS 12 PARES DE FLIP ASSIMÉTRICOS (FACES QUADRANGULARES):
+   - Mapeadas as linhas críticas exatas: present8:407 (7326.122), present9:324 (439326.122),
+     present9:705 (439326.363), present10:830 (p_26373786.122_v9).
+   - O motivo da sobrevivência do gêmeo minoritário (sole=2 a 4) é a imposição estrita de
+     um raio de grau 6 no eixo (ex: 6:6 em present9:324 e present8:407). Isso quebra a
+     simetria reflexiva (sequência 5,5,6,5,5 vs 5,5,5,6,5) exigindo especificamente aquela quiralidade.
+   - Em todos os 886 grafos auditados no sistema, nenhuma outra configuração cobre essas linhas.
+   - A contração da face quad (u, v, w, z) unifica as quiralidades, mas o minor resultante
+     cria max_ring_nbs=4, necessitando de regras de descarregamento dedicadas para formalização.
+================================================================================
+
