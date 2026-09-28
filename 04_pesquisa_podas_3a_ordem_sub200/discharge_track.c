@@ -1032,7 +1032,7 @@ int lineno;
 	 X[x][y] = 1;
 	 w = L[u][i < d ? i + 1 : 1];
 	 if (w <= ring) {
-	    if (worried)
+	    if (worried && adjmat[x][y] == -1 && adjmat[y][x] == -1)
 	       Error("Isomorphism error 5", lineno);
 	    continue;
 	 }
