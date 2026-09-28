@@ -20,8 +20,8 @@ done
 echo ""
 echo "2. Executando Verificador Algébrico em Rust Puro..."
 cd ..
-./target/release/quatro_cores verify-file 03_pesquisa_sub394_nova_fronteira/unavoidable_243.conf 300
-cd 03_pesquisa_sub394_nova_fronteira
+./target/release/quatro_cores verify-file 03_modelo_243_podas_2a_ordem/unavoidable_243.conf 300
+cd 03_modelo_243_podas_2a_ordem
 
 echo ""
 echo "================================================================================"
