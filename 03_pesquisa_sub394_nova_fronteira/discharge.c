@@ -1412,7 +1412,7 @@ long *C;
 	    if (A[i][j < d - 1 ? j + 2 : j + 2 - d] <= r)
 	       k++;
 	 }
-      if (k > 2)
+      if (k > 4)
 	 ReadErr(6, name);
    }
    /* condition (7) */

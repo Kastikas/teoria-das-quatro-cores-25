@@ -7,7 +7,47 @@ mod set_cover;
 use graph::{find_angles, read_configurations, Configuration};
 use reducibility::ReducibilityEngine;
 use std::env;
+use std::fs::File;
+use std::io::Write;
 use std::time::Instant;
+
+fn format_configuration(conf: &Configuration) -> String {
+    let verts = conf.verts();
+    let ring = conf.ring();
+    let extent = conf.extent_claim();
+    let max_cons = conf.max_cons_subset();
+    let mut out = String::new();
+    out.push_str(&format!("{}\n", conf.name));
+    out.push_str(&format!("{} {} {} {}\n", verts, ring, extent, max_cons));
+    if conf.contract_edges.is_empty() {
+        out.push_str(" 0 \n");
+    } else {
+        out.push_str(&format!(" {}", conf.contract_edges.len()));
+        for (u, v) in &conf.contract_edges {
+            out.push_str(&format!(" {} {}", u, v));
+        }
+        out.push('\n');
+    }
+    for v in 1..=verts {
+        let deg = conf.mat[v][0];
+        out.push_str(&format!("  {:2} {:2}\t", v, deg));
+        for i in 1..=deg {
+            out.push_str(&format!(" {:2}", conf.mat[v][i]));
+        }
+        out.push('\n');
+    }
+    let mut coord_count = 0;
+    while coord_count < verts {
+        let chunk = (verts - coord_count).min(8);
+        for _ in 0..chunk {
+            out.push_str(" 1000");
+        }
+        out.push('\n');
+        coord_count += chunk;
+    }
+    out.push('\n');
+    out
+}
 
 fn make_birkhoff_diamond() -> Configuration {
     let mut conf = Configuration::new(1, 10, 6, 16);
@@ -444,38 +484,73 @@ fn main() {
     if args.len() > 1 && args[1] == "synth-all" {
         let path = if args.len() > 2 { &args[2] } else { "test_small_pruned.conf" };
         let max_edges = if args.len() > 3 { args[3].parse::<usize>().unwrap_or(2) } else { 2 };
+        let out_path = if args.len() > 4 { Some(&args[4]) } else { None };
         println!("Testando síntese de C-redutibilidade em {} (até {} arestas)...", path, max_edges);
         match read_configurations(path) {
             Ok(configs) => {
-                println!("Carregadas {} configurações.", configs.len());
-                let mut reducible_count = 0;
-                let mut d_count = 0;
-                let mut c_count = 0;
+                let num_threads = std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4);
+                let chunk_size = (configs.len() + num_threads - 1) / num_threads;
+                println!(
+                    "Carregadas {} configurações. Processando em paralelo ({} threads std)...",
+                    configs.len(),
+                    num_threads
+                );
                 let t_start = Instant::now();
-                for (idx, conf) in configs.iter().enumerate() {
-                    let angles = find_angles(conf);
-                    let report = engine.test_configuration(conf, &angles);
-                    if report.reduction_type == reducibility::ReductionType::DReducible {
-                        println!("  [{:2}/{:2}] Conf {}: D-REDUTÍVEL (0 arestas)!", idx + 1, configs.len(), conf.name);
-                        reducible_count += 1;
-                        d_count += 1;
-                        continue;
+
+                let certified: Vec<Configuration> = std::thread::scope(|s| {
+                    let mut handles = Vec::new();
+                    for chunk in configs.chunks(chunk_size) {
+                        handles.push(s.spawn(move || {
+                            let eng = ReducibilityEngine::new();
+                            let mut local_res = Vec::new();
+                            for conf in chunk {
+                                let angles = find_angles(conf);
+                                let report = eng.test_configuration(conf, &angles);
+                                if report.reduction_type == reducibility::ReductionType::DReducible {
+                                    let mut c = conf.clone();
+                                    c.contract_edges.clear();
+                                    local_res.push(c);
+                                    continue;
+                                }
+                                if let Some(res) = fusion::synthesize_contract(conf, &eng, max_edges) {
+                                    let mut c = conf.clone();
+                                    c.contract_edges = res.edges;
+                                    local_res.push(c);
+                                }
+                            }
+                            local_res
+                        }));
                     }
-                    let t0 = Instant::now();
-                    match fusion::synthesize_contract(conf, &engine, max_edges) {
-                        Some(res) => {
-                            let dur = t0.elapsed();
-                            reducible_count += 1;
-                            c_count += 1;
-                            println!(
-                                "  [{:2}/{:2}] Conf {}: C-REDUTÍVEL com {} arestas {:?} em {:.2?}!",
-                                idx + 1, configs.len(), conf.name, res.num_edges, res.edges, dur
-                            );
-                        }
-                        None => {}
+                    let mut all = Vec::new();
+                    for h in handles {
+                        all.extend(h.join().unwrap());
                     }
+                    all
+                });
+
+                let dur = t_start.elapsed();
+                let d_count = certified.iter().filter(|c| c.contract_edges.is_empty()).count();
+                let c_count = certified.len() - d_count;
+                println!(
+                    "\nTotal Redutíveis Certificados: {}/{} (D: {}, C: {}) em {:.2?} ({:.1} confs/seg)\n",
+                    certified.len(),
+                    configs.len(),
+                    d_count,
+                    c_count,
+                    dur,
+                    configs.len() as f64 / dur.as_secs_f64().max(0.001)
+                );
+
+                if let Some(out_p) = out_path {
+                    let mut file = File::create(out_p).expect("Erro ao criar arquivo de saída");
+                    for c in &certified {
+                        let text = format_configuration(c);
+                        file.write_all(text.as_bytes()).expect("Erro ao escrever");
+                    }
+                    println!("Salvas {} configurações certificadas em {}", certified.len(), out_p);
                 }
-                println!("\nTotal Redutíveis: {}/{} (D: {}, C: {}) em {:.2?}\n", reducible_count, configs.len(), d_count, c_count, t_start.elapsed());
             }
             Err(e) => eprintln!("Erro: {}", e),
         }
