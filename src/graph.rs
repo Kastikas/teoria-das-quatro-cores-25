@@ -474,12 +474,7 @@ pub fn build_contract_angles(
     }
 
     for &Triangle { a, b, c } in triangles {
-        if a > 0
-            && b > 0
-            && angles.contract[a] != 0
-            && angles.contract[b] != 0
-            && c > angles.ring
-        {
+        if a > 0 && b > 0 && angles.contract[a] != 0 && angles.contract[b] != 0 && c > angles.ring {
             angles.is_sparse = false;
         }
 

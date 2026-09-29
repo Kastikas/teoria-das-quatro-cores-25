@@ -349,8 +349,8 @@ pub fn is_subconfiguration(sub: &Configuration, parent: &Configuration) -> bool 
         return false;
     }
 
-    let sub_int_degs: Vec<usize> = (sub_ring + 1..=sub_verts).map(|v| sub.mat[v][0]).collect();
-    let parent_int_degs: Vec<usize> = (parent_ring + 1..=parent_verts)
+    let mut sub_int_degs: Vec<usize> = (sub_ring + 1..=sub_verts).map(|v| sub.mat[v][0]).collect();
+    let mut parent_int_degs: Vec<usize> = (parent_ring + 1..=parent_verts)
         .map(|v| parent.mat[v][0])
         .collect();
 
@@ -372,11 +372,9 @@ pub fn is_subconfiguration(sub: &Configuration, parent: &Configuration) -> bool 
     // If sub_int == parent_int and rings match, check isomorphism
     if sub_int == parent_int && sub_ring == parent_ring {
         // Direct isomorphism test: sorted degree sequence must match exactly
-        let mut s1 = sub_int_degs.clone();
-        s1.sort();
-        let mut s2 = parent_int_degs.clone();
-        s2.sort();
-        if s1 != s2 {
+        sub_int_degs.sort();
+        parent_int_degs.sort();
+        if sub_int_degs != parent_int_degs {
             return false;
         }
     }
@@ -595,7 +593,10 @@ mod tests {
         let res = synthesize_contract(&conf, &engine, 4);
         assert!(res.is_some(), "Should find a contract for 2.126");
         let res = res.unwrap();
-        println!("Found contract with {} edges: {:?}", res.num_edges, res.edges);
+        println!(
+            "Found contract with {} edges: {:?}",
+            res.num_edges, res.edges
+        );
         assert!(res.num_edges <= 4);
         assert_eq!(res.maximal_consistent_subset, 154);
     }
