@@ -467,7 +467,9 @@ pub fn validate_sparse_contract(conf: &Configuration, angles: &Angles) -> Result
         return Err("Contract has more than 4 edges");
     }
     if !angles.is_sparse {
-        return Err("Contract is not sparse (contains ring edge or multiple edges in same triangle)");
+        return Err(
+            "Contract is not sparse (contains ring edge or multiple edges in same triangle)",
+        );
     }
     if n == 4 && !validate_triad(conf) {
         return Err("Contract has no triad");
