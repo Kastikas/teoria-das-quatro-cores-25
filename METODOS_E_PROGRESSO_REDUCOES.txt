@@ -21,9 +21,10 @@ Poda de 2ª Ordem + Eliminação Reversa |  394  | -239    | 100% Rust / dischar
 Superação do GetQuestion + Stromquist|  305  | -328    | 100% Rust / discharge
 Poda de 2ª Ordem + Contratos k=3 (F3)|  243  | -390    | 100% Rust / discharge
 Otimização Global Sub-200 (Frente 4) |  177  | -456    | 100% Rust / discharge
+Frente B: k=4 + Pool 1039 (Sub-150)  |  149  | -484    | 100% Rust / discharge
 --------------------------------------------------------------------------------
-Total líquido eliminado: 456 configurações (-72.04% do conjunto clássico de 633).
-Novo Recorde Mundial Absoluto: 177 configurações inevitáveis e redutíveis.
+Total líquido eliminado: 484 configurações (-76.46% do conjunto clássico de 633).
+Novo Recorde Mundial Absoluto: 149 configurações inevitáveis e redutíveis.
 
 
 2. CERTIFICAÇÃO MATEMÁTICA DO CONJUNTO DE 394 CONFIGURAÇÕES

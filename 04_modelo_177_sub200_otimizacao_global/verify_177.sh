@@ -25,8 +25,8 @@ echo ""
 echo "2. Executando Verificador Algébrico em Rust Puro..."
 cd ..
 cargo build --release --quiet
-./target/release/quatro_cores verify-file 04_pesquisa_podas_3a_ordem_sub200/unavoidable_177.conf 250
-cd 04_pesquisa_podas_3a_ordem_sub200
+./target/release/quatro_cores verify-file 04_modelo_177_sub200_otimizacao_global/unavoidable_177.conf 250
+cd 04_modelo_177_sub200_otimizacao_global
 
 echo ""
 echo "================================================================================"
