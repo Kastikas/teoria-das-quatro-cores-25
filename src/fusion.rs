@@ -1,4 +1,7 @@
-use crate::graph::{find_angles, strip, validate_sparse_contract, Configuration, VERTS};
+use crate::graph::{
+    build_contract_angles, extract_triangles, find_angles, strip, validate_triad_endpoints,
+    Configuration, EDGES, VERTS,
+};
 use crate::reducibility::ReducibilityEngine;
 use std::collections::HashMap;
 
@@ -18,10 +21,10 @@ pub fn synthesize_contract(
 ) -> Option<ContractSearchResult> {
     let mut clean_conf = conf.clone();
     clean_conf.contract_edges.clear();
-    let angles = find_angles(&clean_conf);
+    let base_angles = find_angles(&clean_conf);
 
     let ring = conf.ring();
-    let (live, nlive) = engine.compute_consistent_live(&clean_conf, &angles);
+    let (live, nlive) = engine.compute_consistent_live(&clean_conf, &base_angles);
 
     if nlive == 0 {
         // Already D-reducible! No contract needed.
@@ -29,67 +32,54 @@ pub fn synthesize_contract(
     }
 
     // Build the list of available internal edges from angles.
-    // In strip(), edges 1..=ring are ring edges. Edges (ring+1)..=angles.edges are internal edges.
-    let total_edges = angles.edges;
+    // In strip(), edges 1..=ring are ring edges. Edges (ring+1)..=base_angles.edges are internal edges.
+    let total_edges = base_angles.edges;
     let internal_edge_indices: Vec<usize> = ((ring + 1)..=total_edges).collect();
 
     // Map each internal edge index back to (u, v) vertex pair in O(V^2) via strip()
     let mut edgeno = [[0usize; VERTS]; VERTS];
     let _ = strip(&clean_conf.mat, &mut edgeno);
-    let mut edge_to_verts = HashMap::new();
+    let mut edge_to_verts = [(0usize, 0usize); EDGES + 1];
     for u in 1..=clean_conf.verts() {
         for v in (u + 1)..=clean_conf.verts() {
             let e = edgeno[u][v];
-            if e > ring && e <= total_edges {
-                edge_to_verts.insert(e, (u, v));
+            if e > ring && e <= total_edges && e <= EDGES {
+                edge_to_verts[e] = (u, v);
             }
         }
     }
 
+    let triangles = extract_triangles(&clean_conf, &edgeno);
+
     // Precompute triangle conflict matrix: conflicts[e1][e2] == true if e1 and e2 share a triangle.
-    // In Robertson et al. (RSST 1997 reduce.c), a contract is strictly sparse iff no two edges share a triangle.
-    let mut conflicts = vec![vec![false; total_edges + 1]; total_edges + 1];
-    for v in 1..=clean_conf.verts() {
-        let deg = clean_conf.mat[v][0];
-        for h in 1..=deg {
-            if v <= ring && h == deg {
-                continue;
-            }
-            let i = if h < deg { h + 1 } else { 1 };
-            let u = clean_conf.mat[v][h];
-            let w = clean_conf.mat[v][i];
-            let a = edgeno[v][w];
-            let b = edgeno[u][w];
-            let c = edgeno[u][v];
-            if a > 0 && b > 0 && c > ring {
-                conflicts[a][b] = true;
-                conflicts[b][a] = true;
-            }
-            if a > 0 && c > 0 && b > ring {
-                conflicts[a][c] = true;
-                conflicts[c][a] = true;
-            }
-            if b > 0 && c > 0 && a > ring {
-                conflicts[b][c] = true;
-                conflicts[c][b] = true;
-            }
+    let mut conflicts = [[false; EDGES + 1]; EDGES + 1];
+    for &crate::graph::Triangle { a, b, c } in &triangles {
+        if a > 0 && b > 0 && c > ring && a <= EDGES && b <= EDGES {
+            conflicts[a][b] = true;
+            conflicts[b][a] = true;
+        }
+        if a > 0 && c > 0 && b > ring && a <= EDGES && c <= EDGES {
+            conflicts[a][c] = true;
+            conflicts[c][a] = true;
+        }
+        if b > 0 && c > 0 && a > ring && b <= EDGES && c <= EDGES {
+            conflicts[b][c] = true;
+            conflicts[c][b] = true;
         }
     }
+
+    let max_cons = clean_conf.max_cons_subset();
 
     // 1. Try single-edge contracts (1 edge)
     if max_contracts >= 1 {
         for &e1 in &internal_edge_indices {
-            let (u1, v1) = match edge_to_verts.get(&e1) {
-                Some(&p) => p,
-                None => continue,
-            };
-            let mut cand_conf = clean_conf.clone();
-            cand_conf.contract_edges = vec![(u1, v1)];
-            let cand_angles = find_angles(&cand_conf);
+            let (u1, v1) = edge_to_verts[e1];
+            if u1 == 0 {
+                continue;
+            }
+            let cand_angles = build_contract_angles(&base_angles, &triangles, max_cons, &[e1]);
 
-            if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
-                && engine.check_contract(&cand_angles, &live, nlive)
-            {
+            if cand_angles.is_sparse && engine.check_contract(&cand_angles, &live, nlive) {
                 return Some(ContractSearchResult {
                     edges: vec![(u1, v1)],
                     num_edges: 1,
@@ -104,26 +94,23 @@ pub fn synthesize_contract(
         let n_edges = internal_edge_indices.len();
         for i in 0..n_edges {
             let e1 = internal_edge_indices[i];
-            let (u1, v1) = match edge_to_verts.get(&e1) {
-                Some(&p) => p,
-                None => continue,
-            };
+            let (u1, v1) = edge_to_verts[e1];
+            if u1 == 0 {
+                continue;
+            }
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
                 if conflicts[e1][e2] {
                     continue; // Skip non-sparse pair in O(1)
                 }
-                let (u2, v2) = match edge_to_verts.get(&e2) {
-                    Some(&p) => p,
-                    None => continue,
-                };
-                let mut cand_conf = clean_conf.clone();
-                cand_conf.contract_edges = vec![(u1, v1), (u2, v2)];
-                let cand_angles = find_angles(&cand_conf);
+                let (u2, v2) = edge_to_verts[e2];
+                if u2 == 0 {
+                    continue;
+                }
+                let cand_angles =
+                    build_contract_angles(&base_angles, &triangles, max_cons, &[e1, e2]);
 
-                if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
-                    && engine.check_contract(&cand_angles, &live, nlive)
-                {
+                if cand_angles.is_sparse && engine.check_contract(&cand_angles, &live, nlive) {
                     return Some(ContractSearchResult {
                         edges: vec![(u1, v1), (u2, v2)],
                         num_edges: 2,
@@ -139,35 +126,32 @@ pub fn synthesize_contract(
         let n_edges = internal_edge_indices.len();
         for i in 0..n_edges {
             let e1 = internal_edge_indices[i];
-            let (u1, v1) = match edge_to_verts.get(&e1) {
-                Some(&p) => p,
-                None => continue,
-            };
+            let (u1, v1) = edge_to_verts[e1];
+            if u1 == 0 {
+                continue;
+            }
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
                 if conflicts[e1][e2] {
                     continue; // Skip non-sparse pair in O(1)
                 }
-                let (u2, v2) = match edge_to_verts.get(&e2) {
-                    Some(&p) => p,
-                    None => continue,
-                };
+                let (u2, v2) = edge_to_verts[e2];
+                if u2 == 0 {
+                    continue;
+                }
                 for k in (j + 1)..n_edges {
                     let e3 = internal_edge_indices[k];
                     if conflicts[e1][e3] || conflicts[e2][e3] {
                         continue; // Skip non-sparse triplet in O(1)
                     }
-                    let (u3, v3) = match edge_to_verts.get(&e3) {
-                        Some(&p) => p,
-                        None => continue,
-                    };
-                    let mut cand_conf = clean_conf.clone();
-                    cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3)];
-                    let cand_angles = find_angles(&cand_conf);
+                    let (u3, v3) = edge_to_verts[e3];
+                    if u3 == 0 {
+                        continue;
+                    }
+                    let cand_angles =
+                        build_contract_angles(&base_angles, &triangles, max_cons, &[e1, e2, e3]);
 
-                    if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
-                        && engine.check_contract(&cand_angles, &live, nlive)
-                    {
+                    if cand_angles.is_sparse && engine.check_contract(&cand_angles, &live, nlive) {
                         return Some(ContractSearchResult {
                             edges: vec![(u1, v1), (u2, v2), (u3, v3)],
                             num_edges: 3,
@@ -184,42 +168,52 @@ pub fn synthesize_contract(
         let n_edges = internal_edge_indices.len();
         for i in 0..n_edges {
             let e1 = internal_edge_indices[i];
-            let (u1, v1) = match edge_to_verts.get(&e1) {
-                Some(&p) => p,
-                None => continue,
-            };
+            let (u1, v1) = edge_to_verts[e1];
+            if u1 == 0 {
+                continue;
+            }
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
                 if conflicts[e1][e2] {
                     continue;
                 }
-                let (u2, v2) = match edge_to_verts.get(&e2) {
-                    Some(&p) => p,
-                    None => continue,
-                };
+                let (u2, v2) = edge_to_verts[e2];
+                if u2 == 0 {
+                    continue;
+                }
                 for k in (j + 1)..n_edges {
                     let e3 = internal_edge_indices[k];
                     if conflicts[e1][e3] || conflicts[e2][e3] {
                         continue;
                     }
-                    let (u3, v3) = match edge_to_verts.get(&e3) {
-                        Some(&p) => p,
-                        None => continue,
-                    };
+                    let (u3, v3) = edge_to_verts[e3];
+                    if u3 == 0 {
+                        continue;
+                    }
                     for l in (k + 1)..n_edges {
                         let e4 = internal_edge_indices[l];
                         if conflicts[e1][e4] || conflicts[e2][e4] || conflicts[e3][e4] {
                             continue;
                         }
-                        let (u4, v4) = match edge_to_verts.get(&e4) {
-                            Some(&p) => p,
-                            None => continue,
-                        };
-                        let mut cand_conf = clean_conf.clone();
-                        cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)];
-                        let cand_angles = find_angles(&cand_conf);
+                        let (u4, v4) = edge_to_verts[e4];
+                        if u4 == 0 {
+                            continue;
+                        }
 
-                        if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                        // Fast O(1) triad check on stack endpoints BEFORE building angles or engine checking!
+                        let endpoints = [u1, v1, u2, v2, u3, v3, u4, v4];
+                        if !validate_triad_endpoints(&clean_conf, &endpoints) {
+                            continue;
+                        }
+
+                        let cand_angles = build_contract_angles(
+                            &base_angles,
+                            &triangles,
+                            max_cons,
+                            &[e1, e2, e3, e4],
+                        );
+
+                        if cand_angles.is_sparse
                             && engine.check_contract(&cand_angles, &live, nlive)
                         {
                             return Some(ContractSearchResult {
@@ -573,4 +567,36 @@ pub fn save_optimized_conf(
 
     std::fs::write(output_path, out_blocks.join("\n\n") + "\n\n")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_synthesize_contract_rsst_2_126() {
+        let mut conf = Configuration::new(2126, 12, 8, 81);
+        conf.name = "2.126".to_string();
+        conf.set_max_cons_subset(154);
+        conf.set_vertex(1, &[2, 9, 12, 8]);
+        conf.set_vertex(2, &[3, 9, 1]);
+        conf.set_vertex(3, &[4, 10, 9, 2]);
+        conf.set_vertex(4, &[5, 10, 3]);
+        conf.set_vertex(5, &[6, 11, 10, 4]);
+        conf.set_vertex(6, &[7, 11, 5]);
+        conf.set_vertex(7, &[8, 12, 11, 6]);
+        conf.set_vertex(8, &[1, 12, 7]);
+        conf.set_vertex(9, &[2, 3, 10, 11, 12, 1]);
+        conf.set_vertex(10, &[3, 4, 5, 11, 9]);
+        conf.set_vertex(11, &[10, 5, 6, 7, 12, 9]);
+        conf.set_vertex(12, &[11, 7, 8, 1, 9]);
+
+        let engine = ReducibilityEngine::new();
+        let res = synthesize_contract(&conf, &engine, 4);
+        assert!(res.is_some(), "Should find a contract for 2.126");
+        let res = res.unwrap();
+        println!("Found contract with {} edges: {:?}", res.num_edges, res.edges);
+        assert!(res.num_edges <= 4);
+        assert_eq!(res.maximal_consistent_subset, 154);
+    }
 }

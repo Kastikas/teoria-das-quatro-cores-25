@@ -417,19 +417,108 @@ pub fn find_angles(conf: &Configuration) -> Angles {
     angles
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Triangle {
+    pub a: usize,
+    pub b: usize,
+    pub c: usize,
+}
+
+pub fn extract_triangles(conf: &Configuration, edgeno: &[[usize; VERTS]; VERTS]) -> Vec<Triangle> {
+    let mut triangles = Vec::new();
+    let ring = conf.ring();
+    for v in 1..=conf.verts() {
+        let deg = conf.mat[v][0];
+        for h in 1..=deg {
+            if v <= ring && h == deg {
+                continue;
+            }
+            let i = if h < deg { h + 1 } else { 1 };
+            let u = conf.mat[v][h];
+            let w = conf.mat[v][i];
+            let a = edgeno[v][w];
+            let b = edgeno[u][w];
+            let c = edgeno[u][v];
+            triangles.push(Triangle { a, b, c });
+        }
+    }
+    triangles
+}
+
+pub fn build_contract_angles(
+    base: &Angles,
+    triangles: &[Triangle],
+    max_cons_subset: usize,
+    contract_edges: &[usize],
+) -> Angles {
+    let mut angles = Angles {
+        ring: base.ring,
+        edges: base.edges,
+        angle: base.angle,
+        diffangle: [[0; 5]; EDGES],
+        sameangle: [[0; 5]; EDGES],
+        contract: [0; EDGES + 1],
+        is_sparse: true,
+    };
+
+    angles.contract[0] = contract_edges.len();
+    angles.contract[EDGES] = max_cons_subset;
+
+    for &e in contract_edges {
+        if e <= EDGES {
+            angles.contract[e] = 1;
+            if e <= angles.ring {
+                angles.is_sparse = false;
+            }
+        }
+    }
+
+    for &Triangle { a, b, c } in triangles {
+        if a > 0
+            && b > 0
+            && angles.contract[a] != 0
+            && angles.contract[b] != 0
+            && c > angles.ring
+        {
+            angles.is_sparse = false;
+        }
+
+        if a > c {
+            if angles.contract[a] == 0 && angles.contract[b] == 0 && angles.contract[c] == 0 {
+                angles.diffangle[c][0] += 1;
+                let dc = angles.diffangle[c][0];
+                angles.diffangle[c][dc] = a;
+            }
+            if angles.contract[b] != 0 {
+                angles.sameangle[c][0] += 1;
+                let sc = angles.sameangle[c][0];
+                angles.sameangle[c][sc] = a;
+            }
+        }
+        if b > c {
+            if angles.contract[a] == 0 && angles.contract[b] == 0 && angles.contract[c] == 0 {
+                angles.diffangle[c][0] += 1;
+                let dc = angles.diffangle[c][0];
+                angles.diffangle[c][dc] = b;
+            }
+            if angles.contract[a] != 0 {
+                angles.sameangle[c][0] += 1;
+                let sc = angles.sameangle[c][0];
+                angles.sameangle[c][sc] = b;
+            }
+        }
+    }
+
+    angles
+}
+
 #[allow(dead_code)]
-pub fn validate_triad(conf: &Configuration) -> bool {
-    if conf.contract_edges.len() < 4 {
+pub fn validate_triad_endpoints(conf: &Configuration, endpoints: &[usize]) -> bool {
+    if endpoints.len() < 8 {
         return true;
     }
     let verts = conf.verts();
     let ring = conf.ring();
-
-    let mut endpoints = Vec::with_capacity(8);
-    for &(u, v) in &conf.contract_edges {
-        endpoints.push(u);
-        endpoints.push(v);
-    }
 
     for v in (ring + 1)..=verts {
         let deg = conf.mat[v][0];
@@ -447,17 +536,33 @@ pub fn validate_triad(conf: &Configuration) -> bool {
             return true;
         }
 
-        let mut is_neighbour = vec![false; verts + 1];
+        let mut is_neighbour = [false; VERTS];
         for i in 1..=deg {
-            is_neighbour[conf.mat[v][i]] = true;
+            let u = conf.mat[v][i];
+            if u < VERTS {
+                is_neighbour[u] = true;
+            }
         }
-        for &ep in &endpoints {
-            if !is_neighbour[ep] {
+        for &ep in endpoints {
+            if ep < VERTS && !is_neighbour[ep] {
                 return true;
             }
         }
     }
     false
+}
+
+#[allow(dead_code)]
+pub fn validate_triad(conf: &Configuration) -> bool {
+    if conf.contract_edges.len() < 4 {
+        return true;
+    }
+    let mut endpoints = [0usize; 8];
+    for (i, &(u, v)) in conf.contract_edges.iter().take(4).enumerate() {
+        endpoints[2 * i] = u;
+        endpoints[2 * i + 1] = v;
+    }
+    validate_triad_endpoints(conf, &endpoints)
 }
 
 #[allow(dead_code)]

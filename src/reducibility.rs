@@ -160,8 +160,8 @@ impl ReducibilityEngine {
         let edges = angles.edges;
         let bigno = (self.power[ring + 1] - 1) / 2;
 
-        let mut c = vec![0i64; EDGES + 1];
-        let mut forbidden = vec![0i64; EDGES + 1];
+        let mut c = [0i64; EDGES + 1];
+        let mut forbidden = [0i64; EDGES + 1];
 
         c[edges] = 1;
         let mut j = edges - 1;
@@ -602,8 +602,8 @@ impl ReducibilityEngine {
             return false;
         }
 
-        let mut c = vec![0i64; EDGES + 1];
-        let mut forbidden = vec![0i64; EDGES + 1];
+        let mut c = [0i64; EDGES + 1];
+        let mut forbidden = [0i64; EDGES + 1];
 
         c[start] = 1;
         let mut j = start;
