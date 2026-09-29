@@ -7,7 +7,6 @@ use std::collections::HashMap;
 pub struct ContractSearchResult {
     pub edges: Vec<(usize, usize)>,
     pub num_edges: usize,
-    pub is_valid: bool,
     pub maximal_consistent_subset: usize,
 }
 
@@ -94,7 +93,6 @@ pub fn synthesize_contract(
                 return Some(ContractSearchResult {
                     edges: vec![(u1, v1)],
                     num_edges: 1,
-                    is_valid: true,
                     maximal_consistent_subset: nlive,
                 });
             }
@@ -129,7 +127,6 @@ pub fn synthesize_contract(
                     return Some(ContractSearchResult {
                         edges: vec![(u1, v1), (u2, v2)],
                         num_edges: 2,
-                        is_valid: true,
                         maximal_consistent_subset: nlive,
                     });
                 }
@@ -174,7 +171,6 @@ pub fn synthesize_contract(
                         return Some(ContractSearchResult {
                             edges: vec![(u1, v1), (u2, v2), (u3, v3)],
                             num_edges: 3,
-                            is_valid: true,
                             maximal_consistent_subset: nlive,
                         });
                     }
@@ -229,7 +225,6 @@ pub fn synthesize_contract(
                             return Some(ContractSearchResult {
                                 edges: vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)],
                                 num_edges: 4,
-                                is_valid: true,
                                 maximal_consistent_subset: nlive,
                             });
                         }
@@ -285,6 +280,7 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
 
     for i in 0..confs.len() {
         let c1 = &confs[i];
+        let p1 = &precomputed[i];
         let r1 = c1.ring();
         let v1 = c1.verts();
         let mut sorted_degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
