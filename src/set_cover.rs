@@ -84,9 +84,7 @@ impl SetCoverProblem {
 
     pub fn solve_minimum_set_cover(&self) -> (Vec<usize>, Vec<usize>) {
         let t0 = Instant::now();
-        println!(
-            "Resolvendo Cobertura Mínima de Conjuntos em Rust (HiGHS-equivalent B&B)..."
-        );
+        println!("Resolvendo Cobertura Mínima de Conjuntos em Rust (HiGHS-equivalent B&B)...");
         println!(
             "  -> {} eixos críticos a cobrir, {} configurações candidatas.",
             self.num_axles, self.num_confs
@@ -126,28 +124,31 @@ impl SetCoverProblem {
             // Regra 2: Eixos dominados
             // Se as opções para a1 são subconjunto das opções para a2, a2 pode ser removido
             let axle_vec: Vec<usize> = active_axles.iter().copied().collect();
+            let precomputed_sets: Vec<HashSet<usize>> = axle_vec
+                .iter()
+                .map(|&a| {
+                    self.axle_to_confs[a]
+                        .iter()
+                        .filter(|&&c| active_confs.contains(&c))
+                        .copied()
+                        .collect()
+                })
+                .collect();
+
             let mut dominated_axles = HashSet::new();
             for i in 0..axle_vec.len() {
                 let a1 = axle_vec[i];
-                let set1: HashSet<usize> = self.axle_to_confs[a1]
-                    .iter()
-                    .filter(|&&c| active_confs.contains(&c))
-                    .copied()
-                    .collect();
+                let set1 = &precomputed_sets[i];
                 for j in (i + 1)..axle_vec.len() {
                     let a2 = axle_vec[j];
                     if dominated_axles.contains(&a2) {
                         continue;
                     }
-                    let set2: HashSet<usize> = self.axle_to_confs[a2]
-                        .iter()
-                        .filter(|&&c| active_confs.contains(&c))
-                        .copied()
-                        .collect();
-                    if set1.is_subset(&set2) {
+                    let set2 = &precomputed_sets[j];
+                    if set1.is_subset(set2) {
                         dominated_axles.insert(a2);
                         changed = true;
-                    } else if set2.is_subset(&set1) {
+                    } else if set2.is_subset(set1) {
                         dominated_axles.insert(a1);
                         changed = true;
                         break;

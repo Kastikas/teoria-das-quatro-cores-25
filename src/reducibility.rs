@@ -1,7 +1,8 @@
 use crate::graph::{Angles, Configuration, EDGES, MAXRING};
 
 pub const SIMATCHNUMBER: [usize; 17] = [
-    0, 0, 1, 3, 10, 30, 95, 301, 980, 3228, 10797, 36487, 124542, 428506, 1485003, 5178161, 18155816,
+    0, 0, 1, 3, 10, 30, 95, 301, 980, 3228, 10797, 36487, 124542, 428506, 1485003, 5178161,
+    18155816,
 ];
 
 #[derive(Debug, Clone)]
@@ -53,7 +54,11 @@ impl ReducibilityEngine {
         Self { power }
     }
 
-    pub fn compute_consistent_live(&self, conf: &Configuration, angles: &Angles) -> (Vec<u8>, usize) {
+    pub fn compute_consistent_live(
+        &self,
+        conf: &Configuration,
+        angles: &Angles,
+    ) -> (Vec<u8>, usize) {
         let ring = conf.ring();
         assert!(ring <= MAXRING, "Ring size exceeds MAXRING");
 
@@ -241,13 +246,7 @@ impl ReducibilityEngine {
         }
     }
 
-    fn test_match(
-        &self,
-        ring: usize,
-        real: &mut [u8],
-        live: &mut [u8],
-        nchar: usize,
-    ) -> usize {
+    fn test_match(&self, ring: usize, real: &mut [u8], live: &mut [u8], nchar: usize) -> usize {
         let mut nreal = 0usize;
         let mut bit = 1u8;
         let mut realterm = 0usize;
@@ -797,4 +796,3 @@ mod tests {
         assert_eq!(report.reduction_type, ReductionType::NotReducible);
     }
 }
-

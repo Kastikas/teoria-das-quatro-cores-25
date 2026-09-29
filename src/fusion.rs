@@ -567,5 +567,3 @@ pub fn save_optimized_conf(
     std::fs::write(output_path, out_blocks.join("\n\n") + "\n\n")?;
     Ok(())
 }
-
-
