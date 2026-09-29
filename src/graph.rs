@@ -52,8 +52,12 @@ impl Configuration {
     }
 
     pub fn set_vertex(&mut self, v: usize, neighbors: &[usize]) {
-        self.mat[v][0] = neighbors.len();
-        for (i, &nb) in neighbors.iter().enumerate() {
+        if v >= VERTS {
+            return;
+        }
+        let len = std::cmp::min(neighbors.len(), DEG - 1);
+        self.mat[v][0] = len;
+        for (i, &nb) in neighbors.iter().take(len).enumerate() {
             self.mat[v][i + 1] = nb;
         }
     }
