@@ -250,8 +250,7 @@ pub struct FusionCandidatePair {
     pub name1: String,
     pub name2: String,
     pub ring: usize,
-    pub verts1: usize,
-    pub verts2: usize,
+    pub verts: usize,
     pub degree_difference: usize,
     pub shared_prefix: Option<String>,
 }
@@ -291,6 +290,7 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
         let mut sorted_degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
         sorted_degs1.sort();
 
+        let p1 = &precomputed[i];
         let prefix1 = c1.name.split('.').next().unwrap_or("").to_string();
 
         for j in (i + 1)..confs.len() {
@@ -302,7 +302,8 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                 continue;
             }
 
-            let mut sorted_degs2: Vec<usize> = (r2 + 1..=v2).map(|v| c2.mat[v][0]).collect();
+            let mut sorted_degs2: Vec<usize> =
+                (p2.ring + 1..=p2.verts).map(|v| c2.mat[v][0]).collect();
             sorted_degs2.sort();
 
             let prefix2 = c2.name.split('.').next().unwrap_or("").to_string();
@@ -328,8 +329,7 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                         name1: c1.name.clone(),
                         name2: c2.name.clone(),
                         ring: p1.ring,
-                        verts1: p1.verts,
-                        verts2: p2.verts,
+                        verts: p1.verts,
                         degree_difference: diff_count,
                         shared_prefix,
                     });
@@ -343,8 +343,7 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                     name1: c1.name.clone(),
                     name2: c2.name.clone(),
                     ring: p1.ring,
-                    verts1: p1.verts,
-                    verts2: p2.verts,
+                    verts: p1.verts,
                     degree_difference: 99,
                     shared_prefix,
                 });

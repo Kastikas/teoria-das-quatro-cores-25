@@ -396,7 +396,7 @@ fn main() {
                     let pref = p.shared_prefix.as_deref().unwrap_or("nenhum");
                     println!(
                         "  #{:2}: Conf {} (idx {}) <-> Conf {} (idx {}) | Anel: {}, V: {}, DiffGraus: {}, Família: {}",
-                        i + 1, p.name1, p.idx1, p.name2, p.idx2, p.ring, p.verts1, p.degree_difference, pref
+                        i + 1, p.name1, p.idx1, p.name2, p.idx2, p.ring, p.verts, p.degree_difference, pref
                     );
                 }
             }
