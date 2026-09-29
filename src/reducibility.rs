@@ -21,7 +21,6 @@ pub enum ReductionType {
 
 #[derive(Debug, Clone)]
 pub struct ReducibilityReport {
-    pub ring_size: usize,
     pub total_colorings: usize,
     pub extending_colorings: usize,
     pub initial_failed_colorings: usize,
@@ -30,7 +29,6 @@ pub struct ReducibilityReport {
     pub is_d_reducible: bool,
     pub is_c_reducible: bool,
     pub reduction_type: ReductionType,
-    pub contract_confirmed: bool,
 }
 
 impl ReducibilityReport {
@@ -120,11 +118,9 @@ impl ReducibilityEngine {
 
         let is_d_reducible = nlive == 0;
         let mut is_c_reducible = false;
-        let mut contract_confirmed = false;
 
         if !is_d_reducible && angles.contract[0] > 0 && self.check_contract(angles, &live, nlive) {
             is_c_reducible = true;
-            contract_confirmed = true;
         }
 
         let reduction_type = if is_d_reducible {
@@ -136,7 +132,6 @@ impl ReducibilityEngine {
         };
 
         ReducibilityReport {
-            ring_size: ring,
             total_colorings: ncodes,
             extending_colorings: extending_count,
             initial_failed_colorings: nlive_init,
@@ -145,7 +140,6 @@ impl ReducibilityEngine {
             is_d_reducible,
             is_c_reducible,
             reduction_type,
-            contract_confirmed,
         }
     }
 
@@ -772,7 +766,6 @@ mod tests {
         assert_eq!(report.steps.last().unwrap().remaining_colorings, 154);
 
         // But is C-reducible via the 4-edge contract!
-        assert!(report.contract_confirmed);
         assert!(report.is_c_reducible);
         assert_eq!(report.reduction_type, ReductionType::CReducible);
         assert!(report.is_reducible());
@@ -789,7 +782,6 @@ mod tests {
         let report = engine.test_configuration(&conf, &angles);
 
         assert!(!report.is_d_reducible);
-        assert!(!report.contract_confirmed);
         assert!(!report.is_c_reducible);
         assert_eq!(report.reduction_type, ReductionType::NotReducible);
     }
