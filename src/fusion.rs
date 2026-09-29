@@ -286,7 +286,12 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
 
     for i in 0..confs.len() {
         let c1 = &confs[i];
-        let p1 = &precomputed[i];
+        let r1 = c1.ring();
+        let v1 = c1.verts();
+        let mut sorted_degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
+        sorted_degs1.sort();
+
+        let prefix1 = c1.name.split('.').next().unwrap_or("").to_string();
 
         for j in (i + 1)..confs.len() {
             let c2 = &confs[j];
@@ -297,8 +302,12 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                 continue;
             }
 
-            let shared_prefix = if !p1.prefix.is_empty() && p1.prefix == p2.prefix {
-                Some(p1.prefix.clone())
+            let mut sorted_degs2: Vec<usize> = (r2 + 1..=v2).map(|v| c2.mat[v][0]).collect();
+            sorted_degs2.sort();
+
+            let prefix2 = c2.name.split('.').next().unwrap_or("").to_string();
+            let shared_prefix = if !prefix1.is_empty() && prefix1 == prefix2 {
+                Some(prefix1.clone())
             } else {
                 None
             };
