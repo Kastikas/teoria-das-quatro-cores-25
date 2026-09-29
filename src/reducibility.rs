@@ -785,4 +785,36 @@ mod tests {
         assert!(!report.is_c_reducible);
         assert_eq!(report.reduction_type, ReductionType::NotReducible);
     }
+
+    #[test]
+    fn test_is_reducible() {
+        let mut report = ReducibilityReport {
+            ring_size: 0,
+            total_colorings: 0,
+            extending_colorings: 0,
+            initial_failed_colorings: 0,
+            total_signed_matchings: 0,
+            steps: vec![],
+            is_d_reducible: false,
+            is_c_reducible: false,
+            reduction_type: ReductionType::NotReducible,
+            contract_confirmed: false,
+        };
+
+        // Test false || false -> false
+        assert!(!report.is_reducible());
+
+        // Test true || false -> true
+        report.is_d_reducible = true;
+        assert!(report.is_reducible());
+
+        // Test false || true -> true
+        report.is_d_reducible = false;
+        report.is_c_reducible = true;
+        assert!(report.is_reducible());
+
+        // Test true || true -> true
+        report.is_d_reducible = true;
+        assert!(report.is_reducible());
+    }
 }
