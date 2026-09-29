@@ -264,8 +264,7 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
         let c1 = &confs[i];
         let r1 = c1.ring();
         let v1 = c1.verts();
-        let degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
-        let mut sorted_degs1 = degs1.clone();
+        let mut sorted_degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
         sorted_degs1.sort();
 
         let prefix1 = c1.name.split('.').next().unwrap_or("").to_string();
@@ -280,8 +279,7 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                 continue;
             }
 
-            let degs2: Vec<usize> = (r2 + 1..=v2).map(|v| c2.mat[v][0]).collect();
-            let mut sorted_degs2 = degs2.clone();
+            let mut sorted_degs2: Vec<usize> = (r2 + 1..=v2).map(|v| c2.mat[v][0]).collect();
             sorted_degs2.sort();
 
             let prefix2 = c2.name.split('.').next().unwrap_or("").to_string();
