@@ -789,7 +789,6 @@ mod tests {
     #[test]
     fn test_is_reducible() {
         let mut report = ReducibilityReport {
-            ring_size: 0,
             total_colorings: 0,
             extending_colorings: 0,
             initial_failed_colorings: 0,
@@ -798,7 +797,6 @@ mod tests {
             is_d_reducible: false,
             is_c_reducible: false,
             reduction_type: ReductionType::NotReducible,
-            contract_confirmed: false,
         };
 
         // Test false || false -> false
