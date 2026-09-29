@@ -256,50 +256,59 @@ pub struct FusionCandidatePair {
     pub shared_prefix: Option<String>,
 }
 
+struct PrecomputedConf {
+    ring: usize,
+    verts: usize,
+    sorted_degs: Vec<usize>,
+    prefix: String,
+}
+
 /// Identifies candidate pairs in an unavoidable set that are prime candidates for fusion
 pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandidatePair> {
     let mut pairs = Vec::new();
 
-    // Precompute sorted degrees and prefixes for all configurations
-    let mut precomputed_data = Vec::with_capacity(confs.len());
-    for conf in confs {
-        let r = conf.ring();
-        let v = conf.verts();
-        let mut sorted_degs: Vec<usize> = (r + 1..=v).map(|vert| conf.mat[vert][0]).collect();
-        sorted_degs.sort();
-        let prefix = conf.name.split('.').next().unwrap_or("").to_string();
-        precomputed_data.push((sorted_degs, prefix));
-    }
+    let precomputed: Vec<PrecomputedConf> = confs
+        .iter()
+        .map(|c| {
+            let r = c.ring();
+            let v = c.verts();
+            let mut sorted_degs: Vec<usize> = (r + 1..=v).map(|vi| c.mat[vi][0]).collect();
+            sorted_degs.sort();
+            let prefix = c.name.split('.').next().unwrap_or("").to_string();
+            PrecomputedConf {
+                ring: r,
+                verts: v,
+                sorted_degs,
+                prefix,
+            }
+        })
+        .collect();
 
     for i in 0..confs.len() {
         let c1 = &confs[i];
-        let r1 = c1.ring();
-        let v1 = c1.verts();
-        let (sorted_degs1, prefix1) = &precomputed_data[i];
+        let p1 = &precomputed[i];
 
         for j in (i + 1)..confs.len() {
             let c2 = &confs[j];
-            let r2 = c2.ring();
-            let v2 = c2.verts();
+            let p2 = &precomputed[j];
 
             // Must share the same ring size
-            if r1 != r2 {
+            if p1.ring != p2.ring {
                 continue;
             }
 
-            let (sorted_degs2, prefix2) = &precomputed_data[j];
-
-            let shared_prefix = if !prefix1.is_empty() && prefix1 == prefix2 {
-                Some(prefix1.clone())
+            let shared_prefix = if !p1.prefix.is_empty() && p1.prefix == p2.prefix {
+                Some(p1.prefix.clone())
             } else {
                 None
             };
 
             // Case A: Same number of vertices, compare sorted interior degrees
-            if v1 == v2 {
-                let diff_count = sorted_degs1
+            if p1.verts == p2.verts {
+                let diff_count = p1
+                    .sorted_degs
                     .iter()
-                    .zip(sorted_degs2.iter())
+                    .zip(p2.sorted_degs.iter())
                     .filter(|&(a, b)| a != b)
                     .count();
 
@@ -309,23 +318,24 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                         idx2: j,
                         name1: c1.name.clone(),
                         name2: c2.name.clone(),
-                        ring: r1,
-                        verts1: v1,
-                        verts2: v2,
+                        ring: p1.ring,
+                        verts1: p1.verts,
+                        verts2: p2.verts,
                         degree_difference: diff_count,
                         shared_prefix,
                     });
                 }
-            } else if (v1 as isize - v2 as isize).abs() == 1 && shared_prefix.is_some() {
+            } else if (p1.verts as isize - p2.verts as isize).abs() == 1 && shared_prefix.is_some()
+            {
                 // Case B: Vertices differ by 1 and belong to the exact same prefix family!
                 pairs.push(FusionCandidatePair {
                     idx1: i,
                     idx2: j,
                     name1: c1.name.clone(),
                     name2: c2.name.clone(),
-                    ring: r1,
-                    verts1: v1,
-                    verts2: v2,
+                    ring: p1.ring,
+                    verts1: p1.verts,
+                    verts2: p2.verts,
                     degree_difference: 99,
                     shared_prefix,
                 });
