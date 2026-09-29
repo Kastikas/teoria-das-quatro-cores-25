@@ -66,7 +66,6 @@ pub struct Angles {
     pub diffangle: [[usize; 5]; EDGES],
     pub sameangle: [[usize; 5]; EDGES],
     pub contract: [usize; EDGES + 1],
-    pub is_sparse: bool,
 }
 
 pub fn read_configurations<P: AsRef<Path>>(path: P) -> io::Result<Vec<Configuration>> {
@@ -149,7 +148,7 @@ pub fn read_configurations<P: AsRef<Path>>(path: P) -> io::Result<Vec<Configurat
         }
 
         // Coordinates: skip all lines until we reach an empty line or EOF
-        for peek_line in lines.by_ref() {
+        while let Some(peek_line) = lines.next() {
             let pl = peek_line?;
             if pl.trim().is_empty() {
                 break;
@@ -206,7 +205,7 @@ fn ininterval(grav: &[usize; DEG], done: &[usize; VERTS]) -> usize {
     total_length
 }
 
-pub fn strip(graph: &ConfMat, edgeno: &mut [[usize; VERTS]; VERTS]) -> usize {
+fn strip(graph: &ConfMat, edgeno: &mut [[usize; VERTS]; VERTS]) -> usize {
     let verts = graph[0][0];
     let ring = graph[0][1];
 
@@ -326,8 +325,6 @@ pub fn find_angles(conf: &Configuration) -> Angles {
     let mut edgeno = [[0usize; VERTS]; VERTS];
     let total_edges = strip(&conf.mat, &mut edgeno);
 
-    let mut is_sparse = true;
-
     let mut angles = Angles {
         ring: conf.ring(),
         edges: total_edges,
@@ -335,7 +332,6 @@ pub fn find_angles(conf: &Configuration) -> Angles {
         diffangle: [[0; 5]; EDGES],
         sameangle: [[0; 5]; EDGES],
         contract: [0; EDGES + 1],
-        is_sparse: true,
     };
 
     angles.contract[0] = conf.contract_edges.len();
@@ -347,12 +343,6 @@ pub fn find_angles(conf: &Configuration) -> Angles {
             if e > 0 && e <= EDGES {
                 angles.contract[e] = 1;
             }
-        }
-    }
-
-    for i in 1..=angles.ring {
-        if angles.contract[i] != 0 {
-            is_sparse = false;
         }
     }
 
@@ -368,15 +358,6 @@ pub fn find_angles(conf: &Configuration) -> Angles {
             let a = edgeno[v][w];
             let b = edgeno[u][w];
             let c = edgeno[u][v];
-
-            if a > 0
-                && b > 0
-                && angles.contract[a] != 0
-                && angles.contract[b] != 0
-                && c > conf.ring()
-            {
-                is_sparse = false;
-            }
 
             if a > c {
                 angles.angle[c][0] += 1;
@@ -413,7 +394,6 @@ pub fn find_angles(conf: &Configuration) -> Angles {
         }
     }
 
-    angles.is_sparse = is_sparse;
     angles
 }
 
@@ -469,10 +449,10 @@ pub fn validate_sparse_contract(conf: &Configuration, angles: &Angles) -> Result
     if n > 4 {
         return Err("Contract has more than 4 edges");
     }
-    if !angles.is_sparse {
-        return Err(
-            "Contract is not sparse (contains ring edge or multiple edges in same triangle)",
-        );
+    for i in 1..=angles.ring {
+        if angles.contract[i] != 0 {
+            return Err("Contract is not sparse (contains ring edge)");
+        }
     }
     if n == 4 && !validate_triad(conf) {
         return Err("Contract has no triad");

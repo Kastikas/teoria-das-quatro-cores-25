@@ -1,4 +1,4 @@
-use crate::graph::{find_angles, strip, validate_sparse_contract, Configuration, VERTS};
+use crate::graph::{find_angles, validate_sparse_contract, Configuration};
 use crate::reducibility::ReducibilityEngine;
 use std::collections::HashMap;
 
@@ -34,45 +34,19 @@ pub fn synthesize_contract(
     let total_edges = angles.edges;
     let internal_edge_indices: Vec<usize> = ((ring + 1)..=total_edges).collect();
 
-    // Map each internal edge index back to (u, v) vertex pair in O(V^2) via strip()
-    let mut edgeno = [[0usize; VERTS]; VERTS];
-    let _ = strip(&clean_conf.mat, &mut edgeno);
+    // Map each edge index back to (u, v) vertex pair
     let mut edge_to_verts = HashMap::new();
-    for u in 1..=clean_conf.verts() {
-        for v in (u + 1)..=clean_conf.verts() {
-            let e = edgeno[u][v];
-            if e > ring && e <= total_edges {
-                edge_to_verts.insert(e, (u, v));
-            }
-        }
-    }
-
-    // Precompute triangle conflict matrix: conflicts[e1][e2] == true if e1 and e2 share a triangle.
-    // In Robertson et al. (RSST 1997 reduce.c), a contract is strictly sparse iff no two edges share a triangle.
-    let mut conflicts = vec![vec![false; total_edges + 1]; total_edges + 1];
-    for v in 1..=clean_conf.verts() {
-        let deg = clean_conf.mat[v][0];
-        for h in 1..=deg {
-            if v <= ring && h == deg {
-                continue;
-            }
-            let i = if h < deg { h + 1 } else { 1 };
-            let u = clean_conf.mat[v][h];
-            let w = clean_conf.mat[v][i];
-            let a = edgeno[v][w];
-            let b = edgeno[u][w];
-            let c = edgeno[u][v];
-            if a > 0 && b > 0 && c > ring {
-                conflicts[a][b] = true;
-                conflicts[b][a] = true;
-            }
-            if a > 0 && c > 0 && b > ring {
-                conflicts[a][c] = true;
-                conflicts[c][a] = true;
-            }
-            if b > 0 && c > 0 && a > ring {
-                conflicts[b][c] = true;
-                conflicts[c][b] = true;
+    let verts = clean_conf.verts();
+    for u in 1..=verts {
+        for v in (u + 1)..=verts {
+            let mut test_c = clean_conf.clone();
+            test_c.contract_edges = vec![(u, v)];
+            let test_angles = find_angles(&test_c);
+            for e in (ring + 1)..=total_edges {
+                if test_angles.contract[e] == 1 {
+                    edge_to_verts.insert(e, (u, v));
+                    break;
+                }
             }
         }
     }
@@ -88,15 +62,15 @@ pub fn synthesize_contract(
             cand_conf.contract_edges = vec![(u1, v1)];
             let cand_angles = find_angles(&cand_conf);
 
-            if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
-                && engine.check_contract(&cand_angles, &live, nlive)
-            {
-                return Some(ContractSearchResult {
-                    edges: vec![(u1, v1)],
-                    num_edges: 1,
-                    is_valid: true,
-                    maximal_consistent_subset: nlive,
-                });
+            if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
+                if engine.check_contract(&cand_angles, &live, nlive) {
+                    return Some(ContractSearchResult {
+                        edges: vec![(u1, v1)],
+                        num_edges: 1,
+                        is_valid: true,
+                        maximal_consistent_subset: nlive,
+                    });
+                }
             }
         }
     }
@@ -112,9 +86,6 @@ pub fn synthesize_contract(
             };
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
-                if conflicts[e1][e2] {
-                    continue; // Skip non-sparse pair in O(1)
-                }
                 let (u2, v2) = match edge_to_verts.get(&e2) {
                     Some(&p) => p,
                     None => continue,
@@ -123,15 +94,15 @@ pub fn synthesize_contract(
                 cand_conf.contract_edges = vec![(u1, v1), (u2, v2)];
                 let cand_angles = find_angles(&cand_conf);
 
-                if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
-                    && engine.check_contract(&cand_angles, &live, nlive)
-                {
-                    return Some(ContractSearchResult {
-                        edges: vec![(u1, v1), (u2, v2)],
-                        num_edges: 2,
-                        is_valid: true,
-                        maximal_consistent_subset: nlive,
-                    });
+                if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
+                    if engine.check_contract(&cand_angles, &live, nlive) {
+                        return Some(ContractSearchResult {
+                            edges: vec![(u1, v1), (u2, v2)],
+                            num_edges: 2,
+                            is_valid: true,
+                            maximal_consistent_subset: nlive,
+                        });
+                    }
                 }
             }
         }
@@ -148,18 +119,12 @@ pub fn synthesize_contract(
             };
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
-                if conflicts[e1][e2] {
-                    continue; // Skip non-sparse pair in O(1)
-                }
                 let (u2, v2) = match edge_to_verts.get(&e2) {
                     Some(&p) => p,
                     None => continue,
                 };
                 for k in (j + 1)..n_edges {
                     let e3 = internal_edge_indices[k];
-                    if conflicts[e1][e3] || conflicts[e2][e3] {
-                        continue; // Skip non-sparse triplet in O(1)
-                    }
                     let (u3, v3) = match edge_to_verts.get(&e3) {
                         Some(&p) => p,
                         None => continue,
@@ -168,15 +133,15 @@ pub fn synthesize_contract(
                     cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3)];
                     let cand_angles = find_angles(&cand_conf);
 
-                    if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
-                        && engine.check_contract(&cand_angles, &live, nlive)
-                    {
-                        return Some(ContractSearchResult {
-                            edges: vec![(u1, v1), (u2, v2), (u3, v3)],
-                            num_edges: 3,
-                            is_valid: true,
-                            maximal_consistent_subset: nlive,
-                        });
+                    if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
+                        if engine.check_contract(&cand_angles, &live, nlive) {
+                            return Some(ContractSearchResult {
+                                edges: vec![(u1, v1), (u2, v2), (u3, v3)],
+                                num_edges: 3,
+                                is_valid: true,
+                                maximal_consistent_subset: nlive,
+                            });
+                        }
                     }
                 }
             }
@@ -194,27 +159,18 @@ pub fn synthesize_contract(
             };
             for j in (i + 1)..n_edges {
                 let e2 = internal_edge_indices[j];
-                if conflicts[e1][e2] {
-                    continue;
-                }
                 let (u2, v2) = match edge_to_verts.get(&e2) {
                     Some(&p) => p,
                     None => continue,
                 };
                 for k in (j + 1)..n_edges {
                     let e3 = internal_edge_indices[k];
-                    if conflicts[e1][e3] || conflicts[e2][e3] {
-                        continue;
-                    }
                     let (u3, v3) = match edge_to_verts.get(&e3) {
                         Some(&p) => p,
                         None => continue,
                     };
                     for l in (k + 1)..n_edges {
                         let e4 = internal_edge_indices[l];
-                        if conflicts[e1][e4] || conflicts[e2][e4] || conflicts[e3][e4] {
-                            continue;
-                        }
                         let (u4, v4) = match edge_to_verts.get(&e4) {
                             Some(&p) => p,
                             None => continue,
@@ -223,15 +179,15 @@ pub fn synthesize_contract(
                         cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)];
                         let cand_angles = find_angles(&cand_conf);
 
-                        if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
-                            && engine.check_contract(&cand_angles, &live, nlive)
-                        {
-                            return Some(ContractSearchResult {
-                                edges: vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)],
-                                num_edges: 4,
-                                is_valid: true,
-                                maximal_consistent_subset: nlive,
-                            });
+                        if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
+                            if engine.check_contract(&cand_angles, &live, nlive) {
+                                return Some(ContractSearchResult {
+                                    edges: vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)],
+                                    num_edges: 4,
+                                    is_valid: true,
+                                    maximal_consistent_subset: nlive,
+                                });
+                            }
                         }
                     }
                 }
@@ -256,53 +212,32 @@ pub struct FusionCandidatePair {
     pub shared_prefix: Option<String>,
 }
 
-struct PrecomputedConf {
-    ring: usize,
-    verts: usize,
-    sorted_degs: Vec<usize>,
-    prefix: String,
-}
-
 /// Identifies candidate pairs in an unavoidable set that are prime candidates for fusion
 pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandidatePair> {
     let mut pairs = Vec::new();
-
-    let precomputed: Vec<PrecomputedConf> = confs
-        .iter()
-        .map(|c| {
-            let r = c.ring();
-            let v = c.verts();
-            let mut sorted_degs: Vec<usize> = (r + 1..=v).map(|vi| c.mat[vi][0]).collect();
-            sorted_degs.sort();
-            let prefix = c.name.split('.').next().unwrap_or("").to_string();
-            PrecomputedConf {
-                ring: r,
-                verts: v,
-                sorted_degs,
-                prefix,
-            }
-        })
-        .collect();
 
     for i in 0..confs.len() {
         let c1 = &confs[i];
         let r1 = c1.ring();
         let v1 = c1.verts();
-        let mut sorted_degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
+        let degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
+        let mut sorted_degs1 = degs1.clone();
         sorted_degs1.sort();
 
         let prefix1 = c1.name.split('.').next().unwrap_or("").to_string();
 
         for j in (i + 1)..confs.len() {
             let c2 = &confs[j];
-            let p2 = &precomputed[j];
+            let r2 = c2.ring();
+            let v2 = c2.verts();
 
             // Must share the same ring size
-            if p1.ring != p2.ring {
+            if r1 != r2 {
                 continue;
             }
 
-            let mut sorted_degs2: Vec<usize> = (r2 + 1..=v2).map(|v| c2.mat[v][0]).collect();
+            let degs2: Vec<usize> = (r2 + 1..=v2).map(|v| c2.mat[v][0]).collect();
+            let mut sorted_degs2 = degs2.clone();
             sorted_degs2.sort();
 
             let prefix2 = c2.name.split('.').next().unwrap_or("").to_string();
@@ -313,11 +248,10 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
             };
 
             // Case A: Same number of vertices, compare sorted interior degrees
-            if p1.verts == p2.verts {
-                let diff_count = p1
-                    .sorted_degs
+            if v1 == v2 {
+                let diff_count = sorted_degs1
                     .iter()
-                    .zip(p2.sorted_degs.iter())
+                    .zip(sorted_degs2.iter())
                     .filter(|&(a, b)| a != b)
                     .count();
 
@@ -327,24 +261,23 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                         idx2: j,
                         name1: c1.name.clone(),
                         name2: c2.name.clone(),
-                        ring: p1.ring,
-                        verts1: p1.verts,
-                        verts2: p2.verts,
+                        ring: r1,
+                        verts1: v1,
+                        verts2: v2,
                         degree_difference: diff_count,
                         shared_prefix,
                     });
                 }
-            } else if (p1.verts as isize - p2.verts as isize).abs() == 1 && shared_prefix.is_some()
-            {
+            } else if (v1 as isize - v2 as isize).abs() == 1 && shared_prefix.is_some() {
                 // Case B: Vertices differ by 1 and belong to the exact same prefix family!
                 pairs.push(FusionCandidatePair {
                     idx1: i,
                     idx2: j,
                     name1: c1.name.clone(),
                     name2: c2.name.clone(),
-                    ring: p1.ring,
-                    verts1: p1.verts,
-                    verts2: p2.verts,
+                    ring: r1,
+                    verts1: v1,
+                    verts2: v2,
                     degree_difference: 99,
                     shared_prefix,
                 });

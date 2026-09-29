@@ -7,47 +7,7 @@ mod set_cover;
 use graph::{find_angles, read_configurations, Configuration};
 use reducibility::ReducibilityEngine;
 use std::env;
-use std::fs::File;
-use std::io::Write;
 use std::time::Instant;
-
-fn format_configuration(conf: &Configuration) -> String {
-    let verts = conf.verts();
-    let ring = conf.ring();
-    let extent = conf.extent_claim();
-    let max_cons = conf.max_cons_subset();
-    let mut out = String::new();
-    out.push_str(&format!("{}\n", conf.name));
-    out.push_str(&format!("{} {} {} {}\n", verts, ring, extent, max_cons));
-    if conf.contract_edges.is_empty() {
-        out.push_str(" 0 \n");
-    } else {
-        out.push_str(&format!(" {}", conf.contract_edges.len()));
-        for (u, v) in &conf.contract_edges {
-            out.push_str(&format!(" {} {}", u, v));
-        }
-        out.push('\n');
-    }
-    for v in 1..=verts {
-        let deg = conf.mat[v][0];
-        out.push_str(&format!("  {:2} {:2}\t", v, deg));
-        for i in 1..=deg {
-            out.push_str(&format!(" {:2}", conf.mat[v][i]));
-        }
-        out.push('\n');
-    }
-    let mut coord_count = 0;
-    while coord_count < verts {
-        let chunk = (verts - coord_count).min(8);
-        for _ in 0..chunk {
-            out.push_str(" 1000");
-        }
-        out.push('\n');
-        coord_count += chunk;
-    }
-    out.push('\n');
-    out
-}
 
 fn make_birkhoff_diamond() -> Configuration {
     let mut conf = Configuration::new(1, 10, 6, 16);
@@ -83,61 +43,32 @@ fn explain_reduction(conf: &Configuration, report: &reducibility::ReducibilityRe
     println!("Configuração: {} (ID numérico: {})", conf.name, conf.id);
     let verts = conf.verts();
     let ring = conf.ring();
-    println!(
-        "Vértices totais: {} (Anel: {} vértices, Interior: {} vértices)",
-        verts,
-        ring,
-        verts - ring
+    println!("Vértices totais: {} (Anel: {} vértices, Interior: {} vértices)",
+        verts, ring, verts - ring
     );
-    println!(
-        "Graus dos vértices internos: {:?}",
-        (ring + 1..=verts)
-            .map(|v| conf.mat[v][0])
-            .collect::<Vec<_>>()
+    println!("Graus dos vértices internos: {:?}",
+        (ring + 1..=verts).map(|v| conf.mat[v][0]).collect::<Vec<_>>()
     );
     if !conf.contract_edges.is_empty() {
         println!("Contrato de arestas proposto: {:?}", conf.contract_edges);
     }
     println!();
     println!("1. ESPAÇO DE COLORAÇÕES DE TAIT DO ANEL ({}-ring):", ring);
-    println!(
-        "   - Total de códigos de colorações canônicas do anel: {}",
-        report.total_colorings
-    );
-    println!(
-        "   - Colorações que SE ESTENDEM para o interior da configuração: {}",
-        report.extending_colorings
-    );
-    println!(
-        "   - Colorações em FALHA (que não se estendem diretamente): {}",
-        report.initial_failed_colorings
-    );
-    println!(
-        "   - Total de emparelhamentos balanceados com sinal (Kempe matchings): {}",
-        report.total_signed_matchings
-    );
+    println!("   - Total de códigos de colorações canônicas do anel: {}", report.total_colorings);
+    println!("   - Colorações que SE ESTENDEM para o interior da configuração: {}", report.extending_colorings);
+    println!("   - Colorações em FALHA (que não se estendem diretamente): {}", report.initial_failed_colorings);
+    println!("   - Total de emparelhamentos balanceados com sinal (Kempe matchings): {}", report.total_signed_matchings);
     println!();
     println!("2. CICLO DE REDUÇÃO POR PONTO FIXO DE KEMPE / BIRKHOFF:");
     println!("   A cada rodada, as colorações em falha que NÃO possuem suporte planar não-cruzado");
     println!("   para TODAS as 3 partições de cores do grupo Klein 4-group são eliminadas.\n");
 
-    println!(
-        "   {:<8} | {:<24} | {:<28}",
-        "Rodada", "Colorações Restantes", "Emparelhamentos Reais"
-    );
+    println!("   {:<8} | {:<24} | {:<28}", "Rodada", "Colorações Restantes", "Emparelhamentos Reais");
     println!("   ---------+--------------------------+-----------------------------");
-    println!(
-        "   {:<8} | {:<24} | {:<28}",
-        "Inicial", report.initial_failed_colorings, report.total_signed_matchings
-    );
+    println!("   {:<8} | {:<24} | {:<28}", "Inicial", report.initial_failed_colorings, report.total_signed_matchings);
 
     for s in &report.steps {
-        println!(
-            "   {:<8} | {:<24} | {:<28}",
-            format!("R{}", s.round),
-            s.remaining_colorings,
-            s.remaining_signed_matchings
-        );
+        println!("   {:<8} | {:<24} | {:<28}", format!("R{}", s.round), s.remaining_colorings, s.remaining_signed_matchings);
     }
 
     println!();
@@ -149,63 +80,37 @@ fn explain_reduction(conf: &Configuration, report: &reducibility::ReducibilityRe
             println!("* Como o conjunto de colorações em falha residual convergiu para VAZIO (0),");
             println!("  o conjunto maximal consistente do complemento de extensão é vazio.");
             println!("* Isso demonstra formalmente que NENHUM grafo planar exterior pode impor");
-            println!(
-                "  uma coloração de fronteira que não possa ser convertida por trocas válidas"
-            );
+            println!("  uma coloração de fronteira que não possa ser convertida por trocas válidas");
             println!("  de cadeias de Kempe em uma coloração compatível com o interior!");
-            println!(
-                "* Conclusão: Esta configuração NUNCA pode estar presente em um contraexemplo"
-            );
+            println!("* Conclusão: Esta configuração NUNCA pode estar presente em um contraexemplo");
             println!("  minimal do Teorema das Quatro Cores.");
         }
         reducibility::ReductionType::CReducible => {
             println!("===> RESULTADO: *** C-REDUTÍVEL PROVADO COM SUCESSO VIA CONTRATO! ***");
             println!();
             println!("EXPLICAÇÃO MATEMÁTICA DA REDUÇÃO:");
-            println!(
-                "* O ciclo de Kempe estabilizou em um conjunto maximal consistente não-vazio com"
+            println!("* O ciclo de Kempe estabilizou em um conjunto maximal consistente não-vazio com");
+            println!("  {} colorações (portanto, NÃO é D-redutível).",
+                report.steps.last().map(|s| s.remaining_colorings).unwrap_or(report.initial_failed_colorings)
             );
-            println!(
-                "  {} colorações (portanto, NÃO é D-redutível).",
-                report
-                    .steps
-                    .last()
-                    .map(|s| s.remaining_colorings)
-                    .unwrap_or(report.initial_failed_colorings)
-            );
-            println!(
-                "* No entanto, o contrato de arestas {:?} produz um subgrafo menor S'.",
-                conf.contract_edges
-            );
+            println!("* No entanto, o contrato de arestas {:?} produz um subgrafo menor S'.", conf.contract_edges);
             println!("* O algoritmo verificou que NENHUMA das colorações de Tait do subgrafo contraído S'");
             println!("  possui restrição de anel pertencente ao conjunto consistente residual.");
             println!("* Portanto, qualquer coloração válida de um grafo contendo S' se estende");
-            println!(
-                "  indiretamente por descontracção para uma coloração válida do grafo original!"
-            );
+            println!("  indiretamente por descontracção para uma coloração válida do grafo original!");
             println!("* Conclusão: Configuração formalmente C-redutível provada.");
         }
         reducibility::ReductionType::NotReducible => {
             println!("===> RESULTADO: *** NÃO É REDUTÍVEL (NEM D NEM C) ***");
             println!();
             println!("EXPLICAÇÃO MATEMÁTICA:");
-            println!(
-                "* O processo estabilizou em um ponto fixo não-vazio com {} colorações.",
-                report
-                    .steps
-                    .last()
-                    .map(|s| s.remaining_colorings)
-                    .unwrap_or(report.initial_failed_colorings)
+            println!("* O processo estabilizou em um ponto fixo não-vazio com {} colorações.",
+                report.steps.last().map(|s| s.remaining_colorings).unwrap_or(report.initial_failed_colorings)
             );
             if !conf.contract_edges.is_empty() {
-                println!(
-                    "* O contrato de arestas proposto {:?} falhou na verificação.",
-                    conf.contract_edges
-                );
+                println!("* O contrato de arestas proposto {:?} falhou na verificação.", conf.contract_edges);
             } else {
-                println!(
-                    "* Nenhum contrato de contração foi proposto para tentar C-redutibilidade."
-                );
+                println!("* Nenhum contrato de contração foi proposto para tentar C-redutibilidade.");
             }
         }
     }
@@ -251,11 +156,7 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "inspect" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "nova_configuracao_8ring.conf"
-        };
+        let path = if args.len() > 2 { &args[2] } else { "nova_configuracao_8ring.conf" };
         match read_configurations(path) {
             Ok(configs) => {
                 if let Some(conf) = configs.first() {
@@ -274,16 +175,8 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "verify-file" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "U_2822.conf"
-        };
-        let limit = if args.len() > 3 {
-            args[3].parse::<usize>().unwrap_or(10)
-        } else {
-            10
-        };
+        let path = if args.len() > 2 { &args[2] } else { "U_2822.conf" };
+        let limit = if args.len() > 3 { args[3].parse::<usize>().unwrap_or(10) } else { 10 };
         println!("Lendo até {} configurações de {}...", limit, path);
         let start = Instant::now();
         match read_configurations(path) {
@@ -351,15 +244,8 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "fuse-scan" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "unavoidable_629.conf"
-        };
-        println!(
-            "Carregando configurações de {} para análise de fusão...",
-            path
-        );
+        let path = if args.len() > 2 { &args[2] } else { "unavoidable_629.conf" };
+        println!("Carregando configurações de {} para análise de fusão...", path);
         match read_configurations(path) {
             Ok(configs) => {
                 println!("Carregadas {} configurações.", configs.len());
@@ -382,14 +268,8 @@ fn main() {
                 }
 
                 println!("  - Pares na mesma família de prefixo: {}", same_prefix);
-                println!(
-                    "  - Pares com graus internos exatamente idênticos: {}",
-                    identical_degs
-                );
-                println!(
-                    "  - Pares diferindo por apenas 1 grau interno: {}",
-                    diff1_degs
-                );
+                println!("  - Pares com graus internos exatamente idênticos: {}", identical_degs);
+                println!("  - Pares diferindo por apenas 1 grau interno: {}", diff1_degs);
                 println!();
                 println!("Top 15 pares de candidatos a fusão:");
                 for (i, p) in pairs.iter().take(15).enumerate() {
@@ -408,28 +288,14 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "synthesize-c-red" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "unavoidable_629.conf"
-        };
+        let path = if args.len() > 2 { &args[2] } else { "unavoidable_629.conf" };
         let target = if args.len() > 3 { &args[3] } else { "2.126" };
-        println!(
-            "Buscando configuração '{}' em {} para sintetizar contrato C-redutível...",
-            target, path
-        );
+        println!("Buscando configuração '{}' em {} para sintetizar contrato C-redutível...", target, path);
         match read_configurations(path) {
             Ok(configs) => {
-                let target_conf = configs
-                    .iter()
-                    .find(|c| c.name == *target || c.id.to_string() == *target);
+                let target_conf = configs.iter().find(|c| c.name == *target || c.id.to_string() == *target);
                 if let Some(conf) = target_conf {
-                    println!(
-                        "Configuração encontrada: {} (Anel: {}, Vértices: {})",
-                        conf.name,
-                        conf.ring(),
-                        conf.verts()
-                    );
+                    println!("Configuração encontrada: {} (Anel: {}, Vértices: {})", conf.name, conf.ring(), conf.verts());
                     println!("Contrato original no arquivo: {:?}", conf.contract_edges);
                     println!("Iniciando síntese exaustiva de contratos de 1 a 4 arestas...");
                     let start = Instant::now();
@@ -439,10 +305,7 @@ fn main() {
                             println!("\n===> [SUCESSO!] Contrato sintetizado em {:.2?}!", dur);
                             println!("Arestas contraídas: {:?}", res.edges);
                             println!("Número de arestas: {}", res.num_edges);
-                            println!(
-                                "Conjunto maximal consistente residual: {} colorações",
-                                res.maximal_consistent_subset
-                            );
+                            println!("Conjunto maximal consistente residual: {} colorações", res.maximal_consistent_subset);
                             println!("Formalmente C-REDUTÍVEL provado por busca exaustiva!");
                         }
                         None => {
@@ -461,35 +324,21 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "test-synth-suite" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "unavoidable_629.conf"
-        };
-        let limit = if args.len() > 3 {
-            args[3].parse::<usize>().unwrap_or(20)
-        } else {
-            20
-        };
-        println!(
-            "Testando síntese autônoma de C-redutibilidade nas primeiras {} configurações de {}...",
-            limit, path
-        );
+        let path = if args.len() > 2 { &args[2] } else { "unavoidable_629.conf" };
+        let limit = if args.len() > 3 { args[3].parse::<usize>().unwrap_or(20) } else { 20 };
+        println!("Testando síntese autônoma de C-redutibilidade nas primeiras {} configurações de {}...", limit, path);
         match read_configurations(path) {
             Ok(configs) => {
                 let mut c_candidates = Vec::new();
                 for conf in &configs {
-                    if !conf.contract_edges.is_empty() {
+                    if conf.contract_edges.len() > 0 {
                         c_candidates.push(conf);
                         if c_candidates.len() >= limit {
                             break;
                         }
                     }
                 }
-                println!(
-                    "Encontradas {} configurações C-redutíveis históricas para validação.",
-                    c_candidates.len()
-                );
+                println!("Encontradas {} configurações C-redutíveis históricas para validação.", c_candidates.len());
                 let t_start = Instant::now();
                 let mut synthesized_count = 0;
                 let mut simpler_contract_count = 0;
@@ -512,12 +361,7 @@ fn main() {
                             );
                         }
                         None => {
-                            println!(
-                                "  [{:2}/{:2}] Conf {}: Não encontrado até 4 arestas",
-                                idx + 1,
-                                c_candidates.len(),
-                                conf.name
-                            );
+                            println!("  [{:2}/{:2}] Conf {}: Não encontrado até 4 arestas", idx + 1, c_candidates.len(), conf.name);
                         }
                     }
                 }
@@ -527,20 +371,9 @@ fn main() {
                 println!("            RELATÓRIO DE SÍNTESE AUTÔNOMA DE C-REDUTIBILIDADE                   ");
                 println!("================================================================================");
                 println!("Configurações avaliadas: {}", c_candidates.len());
-                println!(
-                    "Contratos C-redutíveis sintetizados com sucesso: {}/{}",
-                    synthesized_count,
-                    c_candidates.len()
-                );
-                println!(
-                    "Contratos que encontraram redutores MAIS SIMPLES que RSST: {}",
-                    simpler_contract_count
-                );
-                println!(
-                    "Tempo total: {:.2?} (Média: {:.2?} por configuração)",
-                    total_dur,
-                    total_dur / (c_candidates.len() as u32)
-                );
+                println!("Contratos C-redutíveis sintetizados com sucesso: {}/{}", synthesized_count, c_candidates.len());
+                println!("Contratos que encontraram redutores MAIS SIMPLES que RSST: {}", simpler_contract_count);
+                println!("Tempo total: {:.2?} (Média: {:.2?} por configuração)", total_dur, total_dur / (c_candidates.len() as u32));
                 println!("================================================================================\n");
             }
             Err(e) => {
@@ -551,16 +384,8 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "optimize-all-contracts" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "unavoidable_629.conf"
-        };
-        let limit = if args.len() > 3 {
-            Some(args[3].parse::<usize>().unwrap_or(50))
-        } else {
-            None
-        };
+        let path = if args.len() > 2 { &args[2] } else { "unavoidable_629.conf" };
+        let limit = if args.len() > 3 { Some(args[3].parse::<usize>().unwrap_or(50)) } else { None };
         println!("Iniciando otimização global de contratos em {}...", path);
         match read_configurations(path) {
             Ok(configs) => {
@@ -571,46 +396,20 @@ fn main() {
                 println!("\n================================================================================");
                 println!("            RELATÓRIO DE OTIMIZAÇÃO GLOBAL DE CONTRATOS (C-REDUCIBILITY)        ");
                 println!("================================================================================");
-                println!(
-                    "Total de configurações C-redutíveis avaliadas: {}",
-                    stats.total_c_confs
-                );
-                println!(
-                    "  - Reduzidas para exatamente 1 aresta: {}",
-                    stats.reduced_to_1
-                );
-                println!(
-                    "  - Reduzidas para exatamente 2 arestas: {}",
-                    stats.reduced_to_2
-                );
-                println!(
-                    "  - Reduzidas para exatamente 3 arestas: {}",
-                    stats.reduced_to_3
-                );
+                println!("Total de configurações C-redutíveis avaliadas: {}", stats.total_c_confs);
+                println!("  - Reduzidas para exatamente 1 aresta: {}", stats.reduced_to_1);
+                println!("  - Reduzidas para exatamente 2 arestas: {}", stats.reduced_to_2);
+                println!("  - Reduzidas para exatamente 3 arestas: {}", stats.reduced_to_3);
                 println!("  - Inalteradas (já eram mínimas): {}", stats.unchanged);
-                println!(
-                    "Total de arestas de restrição ELIMINADAS: {}",
-                    stats.total_edges_saved
-                );
-                println!(
-                    "Tempo total de processamento: {:.2?} ({:.1} confs/seg)",
-                    dur,
-                    stats.total_c_confs as f64 / dur.as_secs_f64()
-                );
+                println!("Total de arestas de restrição ELIMINADAS: {}", stats.total_edges_saved);
+                println!("Tempo total de processamento: {:.2?} ({:.1} confs/seg)", dur, stats.total_c_confs as f64 / dur.as_secs_f64());
                 println!("================================================================================\n");
 
-                let out_path = if args.len() > 4 {
-                    &args[4]
-                } else {
-                    "unavoidable_629_optimized.conf"
-                };
+                let out_path = if args.len() > 4 { &args[4] } else { "unavoidable_629_optimized.conf" };
                 if let Err(e) = fusion::save_optimized_conf(path, out_path, &opt_configs) {
                     eprintln!("Erro ao salvar arquivo otimizado: {}", e);
                 } else {
-                    println!(
-                        "===> Arquivo com contratos mínimos gerado e salvo com sucesso em '{}'!",
-                        out_path
-                    );
+                    println!("===> Arquivo com contratos mínimos gerado e salvo com sucesso em '{}'!", out_path);
                 }
             }
             Err(e) => {
@@ -621,22 +420,12 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "scan-flips" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "unavoidable_629.conf"
-        };
-        println!(
-            "Mapeando bifurcações por diagonal flip de quadrilátero em {}...",
-            path
-        );
+        let path = if args.len() > 2 { &args[2] } else { "unavoidable_629.conf" };
+        println!("Mapeando bifurcações por diagonal flip de quadrilátero em {}...", path);
         match read_configurations(path) {
             Ok(configs) => {
                 let flips = fusion::find_exact_flip_pairs(&configs);
-                println!(
-                    "\nEncontrados {} pares de configurações com exatamente 1 DIAGONAL FLIP!",
-                    flips.len()
-                );
+                println!("\nEncontrados {} pares de configurações com exatamente 1 DIAGONAL FLIP!", flips.len());
                 println!("Esses pares são irmãos diretos surgidos da bifurcação de faces quadrangulares no descarregamento.\n");
                 for (i, fp) in flips.iter().enumerate() {
                     println!(
@@ -653,96 +442,40 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "synth-all" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "test_small_pruned.conf"
-        };
-        let max_edges = if args.len() > 3 {
-            args[3].parse::<usize>().unwrap_or(2)
-        } else {
-            2
-        };
-        let out_path = if args.len() > 4 { Some(&args[4]) } else { None };
-        println!(
-            "Testando síntese de C-redutibilidade em {} (até {} arestas)...",
-            path, max_edges
-        );
+        let path = if args.len() > 2 { &args[2] } else { "test_small_pruned.conf" };
+        let max_edges = if args.len() > 3 { args[3].parse::<usize>().unwrap_or(2) } else { 2 };
+        println!("Testando síntese de C-redutibilidade em {} (até {} arestas)...", path, max_edges);
         match read_configurations(path) {
             Ok(configs) => {
-                let num_threads = std::thread::available_parallelism()
-                    .map(|n| n.get())
-                    .unwrap_or(4);
-                let chunk_size = configs.len().div_ceil(num_threads);
-                println!(
-                    "Carregadas {} configurações. Processando em paralelo ({} threads std)...",
-                    configs.len(),
-                    num_threads
-                );
+                println!("Carregadas {} configurações.", configs.len());
+                let mut reducible_count = 0;
+                let mut d_count = 0;
+                let mut c_count = 0;
                 let t_start = Instant::now();
-
-                let certified: Vec<Configuration> = std::thread::scope(|s| {
-                    let mut handles = Vec::new();
-                    for chunk in configs.chunks(chunk_size) {
-                        handles.push(s.spawn(move || {
-                            let eng = ReducibilityEngine::new();
-                            let mut local_res = Vec::new();
-                            for conf in chunk {
-                                let angles = find_angles(conf);
-                                let report = eng.test_configuration(conf, &angles);
-                                if report.reduction_type == reducibility::ReductionType::DReducible
-                                {
-                                    let mut c = conf.clone();
-                                    c.contract_edges.clear();
-                                    local_res.push(c);
-                                    continue;
-                                }
-                                if let Some(res) =
-                                    fusion::synthesize_contract(conf, &eng, max_edges)
-                                {
-                                    let mut c = conf.clone();
-                                    c.contract_edges = res.edges;
-                                    local_res.push(c);
-                                }
-                            }
-                            local_res
-                        }));
+                for (idx, conf) in configs.iter().enumerate() {
+                    let angles = find_angles(conf);
+                    let report = engine.test_configuration(conf, &angles);
+                    if report.reduction_type == reducibility::ReductionType::DReducible {
+                        println!("  [{:2}/{:2}] Conf {}: D-REDUTÍVEL (0 arestas)!", idx + 1, configs.len(), conf.name);
+                        reducible_count += 1;
+                        d_count += 1;
+                        continue;
                     }
-                    let mut all = Vec::new();
-                    for h in handles {
-                        all.extend(h.join().unwrap());
+                    let t0 = Instant::now();
+                    match fusion::synthesize_contract(conf, &engine, max_edges) {
+                        Some(res) => {
+                            let dur = t0.elapsed();
+                            reducible_count += 1;
+                            c_count += 1;
+                            println!(
+                                "  [{:2}/{:2}] Conf {}: C-REDUTÍVEL com {} arestas {:?} em {:.2?}!",
+                                idx + 1, configs.len(), conf.name, res.num_edges, res.edges, dur
+                            );
+                        }
+                        None => {}
                     }
-                    all
-                });
-
-                let dur = t_start.elapsed();
-                let d_count = certified
-                    .iter()
-                    .filter(|c| c.contract_edges.is_empty())
-                    .count();
-                let c_count = certified.len() - d_count;
-                println!(
-                    "\nTotal Redutíveis Certificados: {}/{} (D: {}, C: {}) em {:.2?} ({:.1} confs/seg)\n",
-                    certified.len(),
-                    configs.len(),
-                    d_count,
-                    c_count,
-                    dur,
-                    configs.len() as f64 / dur.as_secs_f64().max(0.001)
-                );
-
-                if let Some(out_p) = out_path {
-                    let mut file = File::create(out_p).expect("Erro ao criar arquivo de saída");
-                    for c in &certified {
-                        let text = format_configuration(c);
-                        file.write_all(text.as_bytes()).expect("Erro ao escrever");
-                    }
-                    println!(
-                        "Salvas {} configurações certificadas em {}",
-                        certified.len(),
-                        out_p
-                    );
                 }
+                println!("\nTotal Redutíveis: {}/{} (D: {}, C: {}) em {:.2?}\n", reducible_count, configs.len(), d_count, c_count, t_start.elapsed());
             }
             Err(e) => eprintln!("Erro: {}", e),
         }
@@ -750,27 +483,13 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "fuse-pairs" {
-        let path = if args.len() > 2 {
-            &args[2]
-        } else {
-            "unavoidable_629_optimized.conf"
-        };
-        let limit = if args.len() > 3 {
-            args[3].parse::<usize>().unwrap_or(20)
-        } else {
-            20
-        };
-        println!(
-            "Iniciando Rodada de Fusão Sistemática de Casos em {} (avaliando até {} pares)...",
-            path, limit
-        );
+        let path = if args.len() > 2 { &args[2] } else { "unavoidable_629_optimized.conf" };
+        let limit = if args.len() > 3 { args[3].parse::<usize>().unwrap_or(20) } else { 20 };
+        println!("Iniciando Rodada de Fusão Sistemática de Casos em {} (avaliando até {} pares)...", path, limit);
         match read_configurations(path) {
             Ok(configs) => {
                 let flips = fusion::find_exact_flip_pairs(&configs);
-                println!(
-                    "Mapeados {} pares com bifurcação de quadrilátero planar.\n",
-                    flips.len()
-                );
+                println!("Mapeados {} pares com bifurcação de quadrilátero planar.\n", flips.len());
 
                 let to_eval = limit.min(flips.len());
                 let t_start = Instant::now();
@@ -792,32 +511,20 @@ fn main() {
                     let c1_is_d = c1.contract_edges.is_empty();
                     let c2_is_d = c2.contract_edges.is_empty();
 
-                    let contracts1 = res1
-                        .as_ref()
-                        .map(|r| r.edges.len())
-                        .unwrap_or(c1.contract_edges.len());
-                    let contracts2 = res2
-                        .as_ref()
-                        .map(|r| r.edges.len())
-                        .unwrap_or(c2.contract_edges.len());
+                    let contracts1 = res1.as_ref().map(|r| r.edges.len()).unwrap_or(c1.contract_edges.len());
+                    let contracts2 = res2.as_ref().map(|r| r.edges.len()).unwrap_or(c2.contract_edges.len());
 
-                    let status =
-                        if (c1_is_d && c2_is_d) || (contracts1 == contracts2 && contracts1 > 0) {
-                            contract_equiv_count += 1;
-                            "DUAL SIMÉTRICO (Bifurcação Pura de Face 4)"
-                        } else {
-                            fusible_count += 1;
-                            "ASSIMÉTRICO (Candidato a Absorção por Contrato)"
-                        };
+                    let status = if (c1_is_d && c2_is_d) || (contracts1 == contracts2 && contracts1 > 0) {
+                        contract_equiv_count += 1;
+                        "DUAL SIMÉTRICO (Bifurcação Pura de Face 4)"
+                    } else {
+                        fusible_count += 1;
+                        "ASSIMÉTRICO (Candidato a Absorção por Contrato)"
+                    };
 
                     println!(
                         "  [{:2}/{:2}] Par: Conf {:<14} (idx {:3}) <-> Conf {:<14} (idx {:3})",
-                        idx + 1,
-                        to_eval,
-                        fp.name1,
-                        fp.idx1,
-                        fp.name2,
-                        fp.idx2
+                        idx + 1, to_eval, fp.name1, fp.idx1, fp.name2, fp.idx2
                     );
                     println!(
                         "         Anel: {}, Vértices: {} | Quadrilátero: {:?} <-> {:?}",
@@ -833,14 +540,8 @@ fn main() {
                 let total_dur = t_start.elapsed();
                 println!("--------------------------------------------------------------------------------");
                 println!("Pares avaliados na rodada: {}", to_eval);
-                println!(
-                    "Pares com bifurcação de face quadrangular simétrica: {}",
-                    contract_equiv_count
-                );
-                println!(
-                    "Pares com assimetria de redutores (candidatos a absorção): {}",
-                    fusible_count
-                );
+                println!("Pares com bifurcação de face quadrangular simétrica: {}", contract_equiv_count);
+                println!("Pares com assimetria de redutores (candidatos a absorção): {}", fusible_count);
                 println!("Tempo total da rodada de fusão: {:.2?}", total_dur);
                 println!("================================================================================\n");
             }
@@ -861,22 +562,17 @@ fn main() {
             Ok(problem) => {
                 let (opt_confs, greedy_confs) = problem.solve_minimum_set_cover();
                 let opt_set: std::collections::HashSet<usize> = opt_confs.iter().copied().collect();
-                let greedy_set: std::collections::HashSet<usize> =
-                    greedy_confs.iter().copied().collect();
+                let greedy_set: std::collections::HashSet<usize> = greedy_confs.iter().copied().collect();
                 let mut eliminated: Vec<usize> = greedy_set.difference(&opt_set).copied().collect();
                 eliminated.sort();
-                let mut added_in_exchange: Vec<usize> =
-                    opt_set.difference(&greedy_set).copied().collect();
+                let mut added_in_exchange: Vec<usize> = opt_set.difference(&greedy_set).copied().collect();
                 added_in_exchange.sort();
 
                 println!("================================================================================");
                 println!("             RESULTADO DA OTIMIZAÇÃO GLOBAL SET COVER (RUST)                    ");
                 println!("================================================================================");
                 println!("Total de eixos cobertos: {}", problem.num_axles);
-                println!(
-                    "Configurações escolhidas pelo algoritmo guloso histórico: {}",
-                    greedy_confs.len()
-                );
+                println!("Configurações escolhidas pelo algoritmo guloso histórico: {}", greedy_confs.len());
                 println!("Configurações no ÓTIMO GLOBAL provado: {}", opt_confs.len());
                 println!(
                     "Redução líquida obtida: {} configuração(ões) eliminada(s)!",
@@ -884,10 +580,7 @@ fn main() {
                 );
                 println!("Configurações eliminadas (redundantes): {:?}", eliminated);
                 if !added_in_exchange.is_empty() {
-                    println!(
-                        "Configurações substitutas adicionadas: {:?}",
-                        added_in_exchange
-                    );
+                    println!("Configurações substitutas adicionadas: {:?}", added_in_exchange);
                 }
                 println!("Configurações mínimas necessárias: {:?}", opt_confs);
                 println!("================================================================================\n");
@@ -958,7 +651,7 @@ fn main() {
                 .map(|n| n.get())
                 .unwrap_or(4);
             let total_mutations = all_flips.len();
-            let chunk_size = (total_mutations + num_threads - 1).max(1) / num_threads.max(1);
+            let chunk_size = total_mutations.div_ceil(num_threads).max(1);
 
             println!(
                 "Total de {} mutações geradas. Testando D-redutibilidade em PARALELO ({} threads)...",
@@ -978,12 +671,7 @@ fn main() {
                             let angles = find_angles(&flip.conf);
                             let report = eng.test_configuration(&flip.conf, &angles);
                             if report.is_d_reducible {
-                                local_found.push((
-                                    flip.flipped_edge,
-                                    flip.new_edge,
-                                    flip.conf.ring(),
-                                    report.extending_colorings,
-                                ));
+                                local_found.push((flip.flipped_edge, flip.new_edge, flip.conf.ring(), report.extending_colorings));
                             }
                         }
                         local_found
@@ -996,32 +684,15 @@ fn main() {
 
             let elapsed = t0.elapsed();
             println!("\n================================================================================");
-            println!(
-                "            RELATÓRIO DE MINERAÇÃO PARALELA (MULTI-THREAD)                      "
-            );
-            println!(
-                "================================================================================"
-            );
+            println!("            RELATÓRIO DE MINERAÇÃO PARALELA (MULTI-THREAD)                      ");
+            println!("================================================================================");
             println!("Mutações testadas: {}", total_mutations);
-            println!(
-                "Tempo total: {:.2?} ({:.1} testes/seg)",
-                elapsed,
-                total_mutations as f64 / elapsed.as_secs_f64()
-            );
-            println!(
-                "Novas configurações D-redutíveis encontradas: {}",
-                new_reducible.len()
-            );
+            println!("Tempo total: {:.2?} ({:.1} testes/seg)", elapsed, total_mutations as f64 / elapsed.as_secs_f64());
+            println!("Novas configurações D-redutíveis encontradas: {}", new_reducible.len());
             for (idx, (f_edge, n_edge, ring, ext)) in new_reducible.iter().enumerate() {
                 println!(
                     "  [NOVA #{:2}] Anel {}: flip ({}, {}) -> ({}, {}) | Extensões: {}",
-                    idx + 1,
-                    ring,
-                    f_edge.0,
-                    f_edge.1,
-                    n_edge.0,
-                    n_edge.1,
-                    ext
+                    idx + 1, ring, f_edge.0, f_edge.1, n_edge.0, n_edge.1, ext
                 );
             }
             println!("================================================================================\n");

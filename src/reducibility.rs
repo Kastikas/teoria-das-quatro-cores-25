@@ -1,8 +1,7 @@
 use crate::graph::{Angles, Configuration, EDGES, MAXRING};
 
 pub const SIMATCHNUMBER: [usize; 17] = [
-    0, 0, 1, 3, 10, 30, 95, 301, 980, 3228, 10797, 36487, 124542, 428506, 1485003, 5178161,
-    18155816,
+    0, 0, 1, 3, 10, 30, 95, 301, 980, 3228, 10797, 36487, 124542, 428506, 1485003, 5178161, 18155816,
 ];
 
 #[derive(Debug, Clone)]
@@ -54,11 +53,7 @@ impl ReducibilityEngine {
         Self { power }
     }
 
-    pub fn compute_consistent_live(
-        &self,
-        conf: &Configuration,
-        angles: &Angles,
-    ) -> (Vec<u8>, usize) {
+    pub fn compute_consistent_live(&self, conf: &Configuration, angles: &Angles) -> (Vec<u8>, usize) {
         let ring = conf.ring();
         assert!(ring <= MAXRING, "Ring size exceeds MAXRING");
 
@@ -122,9 +117,11 @@ impl ReducibilityEngine {
         let mut is_c_reducible = false;
         let mut contract_confirmed = false;
 
-        if !is_d_reducible && angles.contract[0] > 0 && self.check_contract(angles, &live, nlive) {
-            is_c_reducible = true;
-            contract_confirmed = true;
+        if !is_d_reducible && angles.contract[0] > 0 {
+            if self.check_contract(angles, &live, nlive) {
+                is_c_reducible = true;
+                contract_confirmed = true;
+            }
         }
 
         let reduction_type = if is_d_reducible {
@@ -244,7 +241,13 @@ impl ReducibilityEngine {
         }
     }
 
-    fn test_match(&self, ring: usize, real: &mut [u8], live: &mut [u8], nchar: usize) -> usize {
+    fn test_match(
+        &self,
+        ring: usize,
+        real: &mut [u8],
+        live: &mut [u8],
+        nchar: usize,
+    ) -> usize {
         let mut nreal = 0usize;
         let mut bit = 1u8;
         let mut realterm = 0usize;
