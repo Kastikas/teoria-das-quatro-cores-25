@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software or the 149-configuration unavoidable set in your research, please cite it as below."
+authors:
+  - family-names: "Kastikas"
+    given-names: "Ivan R."
+    email: "ivan.r.kastikas@gmail.com"
+title: "Reduction of the Four Color Theorem Unavoidable Set to 149 Configurations"
+version: "1.0.0"
+date-released: 2026-09-29
+url: "https://github.com/Kastikas/teoria-das-quatro-cores-463"
+repository-code: "https://github.com/Kastikas/teoria-das-quatro-cores-463"
+keywords:
+  - "four color theorem"
+  - "graph theory"
+  - "unavoidable sets"
+  - "reducibility"
+  - "kempe chains"
+  - "combinatorics"
+  - "rust"
+license: "MIT"
