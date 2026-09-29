@@ -149,7 +149,7 @@ pub fn read_configurations<P: AsRef<Path>>(path: P) -> io::Result<Vec<Configurat
         }
 
         // Coordinates: skip all lines until we reach an empty line or EOF
-        while let Some(peek_line) = lines.next() {
+        for peek_line in lines.by_ref() {
             let pl = peek_line?;
             if pl.trim().is_empty() {
                 break;
@@ -369,10 +369,13 @@ pub fn find_angles(conf: &Configuration) -> Angles {
             let b = edgeno[u][w];
             let c = edgeno[u][v];
 
-            if a > 0 && b > 0 && angles.contract[a] != 0 && angles.contract[b] != 0 {
-                if c > conf.ring() {
-                    is_sparse = false;
-                }
+            if a > 0
+                && b > 0
+                && angles.contract[a] != 0
+                && angles.contract[b] != 0
+                && c > conf.ring()
+            {
+                is_sparse = false;
             }
 
             if a > c {
@@ -467,7 +470,9 @@ pub fn validate_sparse_contract(conf: &Configuration, angles: &Angles) -> Result
         return Err("Contract has more than 4 edges");
     }
     if !angles.is_sparse {
-        return Err("Contract is not sparse (contains ring edge or multiple edges in same triangle)");
+        return Err(
+            "Contract is not sparse (contains ring edge or multiple edges in same triangle)",
+        );
     }
     if n == 4 && !validate_triad(conf) {
         return Err("Contract has no triad");
