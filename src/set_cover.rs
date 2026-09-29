@@ -84,9 +84,7 @@ impl SetCoverProblem {
 
     pub fn solve_minimum_set_cover(&self) -> (Vec<usize>, Vec<usize>) {
         let t0 = Instant::now();
-        println!(
-            "Resolvendo Cobertura Mínima de Conjuntos em Rust (HiGHS-equivalent B&B)..."
-        );
+        println!("Resolvendo Cobertura Mínima de Conjuntos em Rust (HiGHS-equivalent B&B)...");
         println!(
             "  -> {} eixos críticos a cobrir, {} configurações candidatas.",
             self.num_axles, self.num_confs

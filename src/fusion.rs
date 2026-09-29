@@ -88,15 +88,15 @@ pub fn synthesize_contract(
             cand_conf.contract_edges = vec![(u1, v1)];
             let cand_angles = find_angles(&cand_conf);
 
-            if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                if engine.check_contract(&cand_angles, &live, nlive) {
-                    return Some(ContractSearchResult {
-                        edges: vec![(u1, v1)],
-                        num_edges: 1,
-                        is_valid: true,
-                        maximal_consistent_subset: nlive,
-                    });
-                }
+            if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                && engine.check_contract(&cand_angles, &live, nlive)
+            {
+                return Some(ContractSearchResult {
+                    edges: vec![(u1, v1)],
+                    num_edges: 1,
+                    is_valid: true,
+                    maximal_consistent_subset: nlive,
+                });
             }
         }
     }
@@ -123,15 +123,15 @@ pub fn synthesize_contract(
                 cand_conf.contract_edges = vec![(u1, v1), (u2, v2)];
                 let cand_angles = find_angles(&cand_conf);
 
-                if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                    if engine.check_contract(&cand_angles, &live, nlive) {
-                        return Some(ContractSearchResult {
-                            edges: vec![(u1, v1), (u2, v2)],
-                            num_edges: 2,
-                            is_valid: true,
-                            maximal_consistent_subset: nlive,
-                        });
-                    }
+                if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                    && engine.check_contract(&cand_angles, &live, nlive)
+                {
+                    return Some(ContractSearchResult {
+                        edges: vec![(u1, v1), (u2, v2)],
+                        num_edges: 2,
+                        is_valid: true,
+                        maximal_consistent_subset: nlive,
+                    });
                 }
             }
         }
@@ -168,15 +168,15 @@ pub fn synthesize_contract(
                     cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3)];
                     let cand_angles = find_angles(&cand_conf);
 
-                    if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                        if engine.check_contract(&cand_angles, &live, nlive) {
-                            return Some(ContractSearchResult {
-                                edges: vec![(u1, v1), (u2, v2), (u3, v3)],
-                                num_edges: 3,
-                                is_valid: true,
-                                maximal_consistent_subset: nlive,
-                            });
-                        }
+                    if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                        && engine.check_contract(&cand_angles, &live, nlive)
+                    {
+                        return Some(ContractSearchResult {
+                            edges: vec![(u1, v1), (u2, v2), (u3, v3)],
+                            num_edges: 3,
+                            is_valid: true,
+                            maximal_consistent_subset: nlive,
+                        });
                     }
                 }
             }
@@ -223,15 +223,15 @@ pub fn synthesize_contract(
                         cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)];
                         let cand_angles = find_angles(&cand_conf);
 
-                        if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                            if engine.check_contract(&cand_angles, &live, nlive) {
-                                return Some(ContractSearchResult {
-                                    edges: vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)],
-                                    num_edges: 4,
-                                    is_valid: true,
-                                    maximal_consistent_subset: nlive,
-                                });
-                            }
+                        if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                            && engine.check_contract(&cand_angles, &live, nlive)
+                        {
+                            return Some(ContractSearchResult {
+                                edges: vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)],
+                                num_edges: 4,
+                                is_valid: true,
+                                maximal_consistent_subset: nlive,
+                            });
                         }
                     }
                 }
@@ -260,15 +260,22 @@ pub struct FusionCandidatePair {
 pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandidatePair> {
     let mut pairs = Vec::new();
 
+    // Precompute sorted degrees and prefixes for all configurations
+    let mut precomputed_data = Vec::with_capacity(confs.len());
+    for conf in confs {
+        let r = conf.ring();
+        let v = conf.verts();
+        let mut sorted_degs: Vec<usize> = (r + 1..=v).map(|vert| conf.mat[vert][0]).collect();
+        sorted_degs.sort();
+        let prefix = conf.name.split('.').next().unwrap_or("").to_string();
+        precomputed_data.push((sorted_degs, prefix));
+    }
+
     for i in 0..confs.len() {
         let c1 = &confs[i];
         let r1 = c1.ring();
         let v1 = c1.verts();
-        let degs1: Vec<usize> = (r1 + 1..=v1).map(|v| c1.mat[v][0]).collect();
-        let mut sorted_degs1 = degs1.clone();
-        sorted_degs1.sort();
-
-        let prefix1 = c1.name.split('.').next().unwrap_or("").to_string();
+        let (sorted_degs1, prefix1) = &precomputed_data[i];
 
         for j in (i + 1)..confs.len() {
             let c2 = &confs[j];
@@ -280,11 +287,8 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
                 continue;
             }
 
-            let degs2: Vec<usize> = (r2 + 1..=v2).map(|v| c2.mat[v][0]).collect();
-            let mut sorted_degs2 = degs2.clone();
-            sorted_degs2.sort();
+            let (sorted_degs2, prefix2) = &precomputed_data[j];
 
-            let prefix2 = c2.name.split('.').next().unwrap_or("").to_string();
             let shared_prefix = if !prefix1.is_empty() && prefix1 == prefix2 {
                 Some(prefix1.clone())
             } else {
@@ -567,5 +571,3 @@ pub fn save_optimized_conf(
     std::fs::write(output_path, out_blocks.join("\n\n") + "\n\n")?;
     Ok(())
 }
-
-
