@@ -349,22 +349,26 @@ pub fn is_subconfiguration(sub: &Configuration, parent: &Configuration) -> bool 
         return false;
     }
 
-    let mut sub_int_degs: Vec<usize> = (sub_ring + 1..=sub_verts).map(|v| sub.mat[v][0]).collect();
-    let mut parent_int_degs: Vec<usize> = (parent_ring + 1..=parent_verts)
-        .map(|v| parent.mat[v][0])
-        .collect();
-
-    let mut sub_map = HashMap::new();
-    for &d in &sub_int_degs {
-        *sub_map.entry(d).or_insert(0) += 1;
-    }
-    let mut parent_map = HashMap::new();
-    for &d in &parent_int_degs {
-        *parent_map.entry(d).or_insert(0) += 1;
+    // Fast path: stack-allocated array for counting degree frequencies
+    // Max degree is DEG (14), so [0; 16] is enough.
+    let mut sub_counts = [0u8; 16];
+    for v in (sub_ring + 1)..=sub_verts {
+        let d = sub.mat[v][0];
+        if d < 16 {
+            sub_counts[d] += 1;
+        }
     }
 
-    for (k, v) in sub_map {
-        if parent_map.get(&k).copied().unwrap_or(0) < v {
+    let mut parent_counts = [0u8; 16];
+    for v in (parent_ring + 1)..=parent_verts {
+        let d = parent.mat[v][0];
+        if d < 16 {
+            parent_counts[d] += 1;
+        }
+    }
+
+    for d in 0..16 {
+        if sub_counts[d] > parent_counts[d] {
             return false;
         }
     }
@@ -372,8 +376,13 @@ pub fn is_subconfiguration(sub: &Configuration, parent: &Configuration) -> bool 
     // If sub_int == parent_int and rings match, check isomorphism
     if sub_int == parent_int && sub_ring == parent_ring {
         // Direct isomorphism test: sorted degree sequence must match exactly
-        sub_int_degs.sort();
-        parent_int_degs.sort();
+        let mut sub_int_degs: Vec<usize> =
+            (sub_ring + 1..=sub_verts).map(|v| sub.mat[v][0]).collect();
+        let mut parent_int_degs: Vec<usize> = (parent_ring + 1..=parent_verts)
+            .map(|v| parent.mat[v][0])
+            .collect();
+        sub_int_degs.sort_unstable();
+        parent_int_degs.sort_unstable();
         if sub_int_degs != parent_int_degs {
             return false;
         }
