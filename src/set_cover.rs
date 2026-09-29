@@ -139,12 +139,10 @@ impl SetCoverProblem {
             for i in 0..axle_vec.len() {
                 let a1 = axle_vec[i];
                 let set1 = &precomputed_sets[i];
-                for j in (i + 1)..axle_vec.len() {
-                    let a2 = axle_vec[j];
+                for (&a2, set2) in axle_vec.iter().zip(precomputed_sets.iter()).skip(i + 1) {
                     if dominated_axles.contains(&a2) {
                         continue;
                     }
-                    let set2 = &precomputed_sets[j];
                     if set1.is_subset(set2) {
                         dominated_axles.insert(a2);
                         changed = true;
