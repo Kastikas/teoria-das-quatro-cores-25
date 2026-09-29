@@ -88,15 +88,15 @@ pub fn synthesize_contract(
             cand_conf.contract_edges = vec![(u1, v1)];
             let cand_angles = find_angles(&cand_conf);
 
-            if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                if engine.check_contract(&cand_angles, &live, nlive) {
-                    return Some(ContractSearchResult {
-                        edges: vec![(u1, v1)],
-                        num_edges: 1,
-                        is_valid: true,
-                        maximal_consistent_subset: nlive,
-                    });
-                }
+            if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                && engine.check_contract(&cand_angles, &live, nlive)
+            {
+                return Some(ContractSearchResult {
+                    edges: vec![(u1, v1)],
+                    num_edges: 1,
+                    is_valid: true,
+                    maximal_consistent_subset: nlive,
+                });
             }
         }
     }
@@ -123,15 +123,15 @@ pub fn synthesize_contract(
                 cand_conf.contract_edges = vec![(u1, v1), (u2, v2)];
                 let cand_angles = find_angles(&cand_conf);
 
-                if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                    if engine.check_contract(&cand_angles, &live, nlive) {
-                        return Some(ContractSearchResult {
-                            edges: vec![(u1, v1), (u2, v2)],
-                            num_edges: 2,
-                            is_valid: true,
-                            maximal_consistent_subset: nlive,
-                        });
-                    }
+                if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                    && engine.check_contract(&cand_angles, &live, nlive)
+                {
+                    return Some(ContractSearchResult {
+                        edges: vec![(u1, v1), (u2, v2)],
+                        num_edges: 2,
+                        is_valid: true,
+                        maximal_consistent_subset: nlive,
+                    });
                 }
             }
         }
@@ -168,15 +168,15 @@ pub fn synthesize_contract(
                     cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3)];
                     let cand_angles = find_angles(&cand_conf);
 
-                    if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                        if engine.check_contract(&cand_angles, &live, nlive) {
-                            return Some(ContractSearchResult {
-                                edges: vec![(u1, v1), (u2, v2), (u3, v3)],
-                                num_edges: 3,
-                                is_valid: true,
-                                maximal_consistent_subset: nlive,
-                            });
-                        }
+                    if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                        && engine.check_contract(&cand_angles, &live, nlive)
+                    {
+                        return Some(ContractSearchResult {
+                            edges: vec![(u1, v1), (u2, v2), (u3, v3)],
+                            num_edges: 3,
+                            is_valid: true,
+                            maximal_consistent_subset: nlive,
+                        });
                     }
                 }
             }
@@ -223,15 +223,15 @@ pub fn synthesize_contract(
                         cand_conf.contract_edges = vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)];
                         let cand_angles = find_angles(&cand_conf);
 
-                        if validate_sparse_contract(&cand_conf, &cand_angles).is_ok() {
-                            if engine.check_contract(&cand_angles, &live, nlive) {
-                                return Some(ContractSearchResult {
-                                    edges: vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)],
-                                    num_edges: 4,
-                                    is_valid: true,
-                                    maximal_consistent_subset: nlive,
-                                });
-                            }
+                        if validate_sparse_contract(&cand_conf, &cand_angles).is_ok()
+                            && engine.check_contract(&cand_angles, &live, nlive)
+                        {
+                            return Some(ContractSearchResult {
+                                edges: vec![(u1, v1), (u2, v2), (u3, v3), (u4, v4)],
+                                num_edges: 4,
+                                is_valid: true,
+                                maximal_consistent_subset: nlive,
+                            });
                         }
                     }
                 }

@@ -292,7 +292,7 @@ fn main() {
                 let num_threads = std::thread::available_parallelism()
                     .map(|n| n.get())
                     .unwrap_or(4);
-                let chunk_size = (to_check + num_threads - 1) / num_threads;
+                let chunk_size = to_check.div_ceil(num_threads);
                 let slice = &configs[..to_check];
 
                 println!(
@@ -479,7 +479,7 @@ fn main() {
             Ok(configs) => {
                 let mut c_candidates = Vec::new();
                 for conf in &configs {
-                    if conf.contract_edges.len() > 0 {
+                    if !conf.contract_edges.is_empty() {
                         c_candidates.push(conf);
                         if c_candidates.len() >= limit {
                             break;
@@ -673,7 +673,7 @@ fn main() {
                 let num_threads = std::thread::available_parallelism()
                     .map(|n| n.get())
                     .unwrap_or(4);
-                let chunk_size = (configs.len() + num_threads - 1) / num_threads;
+                let chunk_size = configs.len().div_ceil(num_threads);
                 println!(
                     "Carregadas {} configurações. Processando em paralelo ({} threads std)...",
                     configs.len(),

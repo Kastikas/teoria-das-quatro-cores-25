@@ -122,11 +122,9 @@ impl ReducibilityEngine {
         let mut is_c_reducible = false;
         let mut contract_confirmed = false;
 
-        if !is_d_reducible && angles.contract[0] > 0 {
-            if self.check_contract(angles, &live, nlive) {
-                is_c_reducible = true;
-                contract_confirmed = true;
-            }
+        if !is_d_reducible && angles.contract[0] > 0 && self.check_contract(angles, &live, nlive) {
+            is_c_reducible = true;
+            contract_confirmed = true;
         }
 
         let reduction_type = if is_d_reducible {
