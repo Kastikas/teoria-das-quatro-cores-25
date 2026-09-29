@@ -31,19 +31,27 @@ fn main() {
     };
 
     println!(
-        "Benchmarking find_fusion_candidate_pairs with {} configurations...",
+        "\nBenchmarking is_subconfiguration with {} configurations...",
         configs.len()
     );
-    let iterations = 100;
-    let t0 = Instant::now();
-    let mut total_pairs = 0;
-    for _ in 0..iterations {
-        let pairs = fusion::find_fusion_candidate_pairs(&configs);
-        total_pairs = pairs.len();
+    let iterations_subconf = 100;
+    let t0_subconf = Instant::now();
+    let mut match_count = 0;
+    for _ in 0..iterations_subconf {
+        for i in 0..configs.len() {
+            for j in 0..configs.len() {
+                if fusion::is_subconfiguration(&configs[i], &configs[j]) {
+                    match_count += 1;
+                }
+            }
+        }
     }
-    let elapsed = t0.elapsed();
-    let per_iter = elapsed / iterations as u32;
-    println!("Candidate pairs found: {}", total_pairs);
-    println!("Total time ({} iters): {:.2?}", iterations, elapsed);
-    println!("Average time per iteration: {:.2?}", per_iter);
+    let elapsed_subconf = t0_subconf.elapsed();
+    let per_iter_subconf = elapsed_subconf / iterations_subconf as u32;
+    println!("Matches found: {}", match_count / iterations_subconf as u32);
+    println!(
+        "Total time ({} iters): {:.2?}",
+        iterations_subconf, elapsed_subconf
+    );
+    println!("Average time per iteration: {:.2?}", per_iter_subconf);
 }
