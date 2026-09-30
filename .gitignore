@@ -5,3 +5,5 @@ anc_tools/
 *.out
 outlet.et
 test_*.conf
+__pycache__/
+*.pyc

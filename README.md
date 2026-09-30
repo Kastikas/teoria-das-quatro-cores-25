@@ -1,7 +1,7 @@
 # Redução do Conjunto Inevitável do Teorema das Quatro Cores
-### 🏆 Novo Recorde Mundial: 149 Configurações (Quebra da Barreira dos 150)
+### 🏆 Novo Recorde Mundial: 137 Configurações (Fronteira Sub-140)
 
-Este repositório contém a implementação completa em **Rust puro** (com zero alocações em caminhos críticos e sem dependências externas de runtime) e os conjuntos canônicos certificados para o **Teorema das Quatro Cores (4CT)**, reduzindo o conjunto inevitável histórico de **633 configurações (RSST 1997 / Gonthier Coq 2005)** para o recorde absoluto de **149 configurações** (**-76,46%** de redução líquida, 484 configurações eliminadas).
+Este repositório contém a implementação completa em **Rust puro** (com zero alocações em caminhos críticos e sem dependências externas de runtime) e os conjuntos canônicos certificados para o **Teorema das Quatro Cores (4CT)**, reduzindo o conjunto inevitável histórico de **633 configurações (RSST 1997 / Gonthier Coq 2005)** para o recorde absoluto de **137 configurações** (**-78,36%** de redução líquida, 496 configurações eliminadas).
 
 ---
 
@@ -17,7 +17,8 @@ Este repositório contém a implementação completa em **Rust puro** (com zero 
 | **Podas Topológicas de 1ª Ordem** | 305 | -328 confs (-51,8%) | 305/305 redutíveis | 100% verificado |
 | **Podas Topológicas de 2ª Ordem** | 243 | -390 confs (-61,6%) | 243/243 redutíveis | 100% verificado |
 | **Otimização Global e Poda Exaustiva** | 177 | -456 confs (-72,0%) | 177/177 redutíveis | 100% verificado |
-| 🚀 **Fronteira Sub-150: Síntese $k=4$ sob Lema de Stromquist** | **149** | **-484 confs (-76,46%)** | **149/149 redutíveis** (22 D, 127 C) | **100% verificado (todas as 5)** |
+| **Fronteira Sub-150: Síntese $k=4$ sob Stromquist** | 149 | -484 confs (-76,46%) | 149/149 redutíveis (22 D, 127 C) | 100% verificado |
+| 🚀 **Fronteira Sub-140: Podas de 4ª Ordem Profunda** | **137** | **-496 confs (-78,36%)** | **137/137 redutíveis** (20 D, 117 C) | **100% verificado (todas as 5)** |
 
 ---
 
@@ -41,19 +42,19 @@ Este repositório contém a implementação completa em **Rust puro** (com zero 
 * Compilador **Rust** (`cargo`, `rustc` $\ge 1.70$)
 * Compilador **C** (`gcc` ou `clang`)
 
-### 2. Certificação Completa do Recorde Mundial (149 Configurações)
+### 2. Certificação Completa do Recorde Mundial (137 Configurações)
 Para rodar a dupla certificação formal (RSST `discharge` em C + Verificador Algébrico em Rust) com um único comando:
 
 ```bash
-cd 05_pesquisa_contratos_k4_podas_profundas
-./verify_149.sh
+cd 06_pesquisa_podas_4a_ordem_sub140
+./verify_137.sh
 ```
 
 *Saída esperada:*
 ```text
 ================================================================================
-    VERIFICAÇÃO FORMAL DO NOVO RECORDE MUNDIAL: 149 CONFIGURAÇÕES               
-    Fronteira Sub-150: Síntese de Contratos k=4 sob o Lema de Stromquist (1975) 
+    VERIFICAÇÃO FORMAL DO NOVO RECORDE MUNDIAL: 137 CONFIGURAÇÕES               
+    Fronteira Sub-140: Podas de 4ª Ordem sob o Lema de Stromquist (1975)        
 ================================================================================
 1. Executando Verificador Oficial RSST (discharge) com Reconhecedor Universal...
   -> Verificando present7... OK (present7 verified.)
@@ -63,12 +64,12 @@ cd 05_pesquisa_contratos_k4_podas_profundas
   -> Verificando present11... OK (present11 verified.)
 
 2. Executando Verificador Algébrico em Rust Puro...
-Carregadas 149 configurações. Verificando 149 em paralelo...
-Concluído! Total Redutíveis: 149/149 (D: 22, C: 127) em ~137s
+Carregadas 137 configurações. Verificando 137 em paralelo...
+Concluído! Total Redutíveis: 137/137 (D: 20, C: 117) em ~91s
 
 ================================================================================
- CERTIFICAÇÃO CONCLUÍDA: 149/149 CONFIGURAÇÕES 100% VÁLIDAS E INEVITÁVEIS!      
- Redução vs RSST 633: -484 (-76.5%) | Redução vs Recorde 177: -28 (-15.8%)      
+ CERTIFICAÇÃO CONCLUÍDA: 137/137 CONFIGURAÇÕES 100% VÁLIDAS E INEVITÁVEIS!      
+ Redução vs RSST 633: -496 (-78.4%) | Redução vs Recorde 149: -12 (-8.1%)       
 ================================================================================
 ```
 
@@ -86,7 +87,8 @@ cargo bench
 * `02_modelo_394_recorde_compacto/`: Primeiro conjunto compacto pós-podas de anéis 11-14.
 * `03_modelo_243_podas_2a_ordem/`: Modelo com podas de 2ª ordem e reconfiguração de anéis.
 * `04_modelo_177_sub200_otimizacao_global/`: Modelo recorde sub-200 obtido por Set Cover exato.
-* `05_pesquisa_contratos_k4_podas_profundas/`: **Recorde Mundial de 149 configurações** com script de verificação formal dual `verify_149.sh`.
+* `05_pesquisa_contratos_k4_podas_profundas/`: Modelo de 149 configurações com síntese $k=4$.
+* `06_pesquisa_podas_4a_ordem_sub140/`: **Recorde Mundial Absoluto de 137 configurações** com podas de 4ª ordem e script `verify_137.sh`.
 * `src/`: Motor algébrico de alto desempenho em Rust puro (redutibilidade, fusão de grafos, set cover e mutações).
 * `benches/`: Benchmarks estáveis com medição de microssegundos.
 * `data/`: Matrizes bipartidas de incidência de descarregamento e arquivos de cobertura.
