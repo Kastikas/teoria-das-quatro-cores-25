@@ -86,40 +86,56 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
 
             for i in 1..=verts {
                 let deg_i = conf.mat[i][0];
-                let mut nbs: Vec<usize> = (1..=deg_i).map(|idx| conf.mat[i][idx]).collect();
+                let mut nbs = [0usize; 32];
+                let mut nbs_len = 0;
+                for idx in 1..=deg_i {
+                    nbs[nbs_len] = conf.mat[i][idx];
+                    nbs_len += 1;
+                }
 
                 if i == u {
                     // Remove v from u's list
-                    nbs.retain(|&x| x != v);
-                } else if i == v {
-                    // Remove u from v's list
-                    nbs.retain(|&x| x != u);
-                } else if i == w {
-                    // Insert z between u and v (or v and u)
-                    let mut new_list = Vec::new();
-                    for &item in &nbs {
-                        new_list.push(item);
-                        if (item == u && nbs.contains(&v)) || (item == v && nbs.contains(&u)) {
-                            // Find where to insert z
+                    let mut new_nbs_len = 0;
+                    for idx in 0..nbs_len {
+                        if nbs[idx] != v {
+                            nbs[new_nbs_len] = nbs[idx];
+                            new_nbs_len += 1;
                         }
                     }
+                    nbs_len = new_nbs_len;
+                } else if i == v {
+                    // Remove u from v's list
+                    let mut new_nbs_len = 0;
+                    for idx in 0..nbs_len {
+                        if nbs[idx] != u {
+                            nbs[new_nbs_len] = nbs[idx];
+                            new_nbs_len += 1;
+                        }
+                    }
+                    nbs_len = new_nbs_len;
+                } else if i == w {
+                    // Insert z between u and v (or v and u)
                     // Insert z right next to u or v where they meet
-                    if let Some(pos_u) = nbs.iter().position(|&x| x == u) {
-                        if let Some(pos_v) = nbs.iter().position(|&x| x == v) {
+                    if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
+                        if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
                             let insert_pos = pos_u.max(pos_v);
-                            nbs.insert(insert_pos, z);
+                            nbs[insert_pos..nbs_len+1].rotate_right(1);
+                            nbs[insert_pos] = z;
+                            nbs_len += 1;
                         }
                     }
                 } else if i == z {
-                    if let Some(pos_u) = nbs.iter().position(|&x| x == u) {
-                        if let Some(pos_v) = nbs.iter().position(|&x| x == v) {
+                    if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
+                        if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
                             let insert_pos = pos_u.max(pos_v);
-                            nbs.insert(insert_pos, w);
+                            nbs[insert_pos..nbs_len+1].rotate_right(1);
+                            nbs[insert_pos] = w;
+                            nbs_len += 1;
                         }
                     }
                 }
 
-                new_conf.set_vertex(i, &nbs);
+                new_conf.set_vertex(i, &nbs[..nbs_len]);
             }
 
             results.push(FlippedConfig {
