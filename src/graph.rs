@@ -383,35 +383,47 @@ pub fn find_angles(conf: &Configuration) -> Angles {
             }
 
             if a > c {
-                angles.angle[c][0] += 1;
-                let cnt = angles.angle[c][0];
-                angles.angle[c][cnt] = a;
+                if angles.angle[c][0] < 4 {
+                    angles.angle[c][0] += 1;
+                    let cnt = angles.angle[c][0];
+                    angles.angle[c][cnt] = a;
+                }
 
                 if angles.contract[a] == 0 && angles.contract[b] == 0 && angles.contract[c] == 0 {
-                    angles.diffangle[c][0] += 1;
-                    let dc = angles.diffangle[c][0];
-                    angles.diffangle[c][dc] = a;
+                    if angles.diffangle[c][0] < 4 {
+                        angles.diffangle[c][0] += 1;
+                        let dc = angles.diffangle[c][0];
+                        angles.diffangle[c][dc] = a;
+                    }
                 }
                 if angles.contract[b] != 0 {
-                    angles.sameangle[c][0] += 1;
-                    let sc = angles.sameangle[c][0];
-                    angles.sameangle[c][sc] = a;
+                    if angles.sameangle[c][0] < 4 {
+                        angles.sameangle[c][0] += 1;
+                        let sc = angles.sameangle[c][0];
+                        angles.sameangle[c][sc] = a;
+                    }
                 }
             }
             if b > c {
-                angles.angle[c][0] += 1;
-                let cnt = angles.angle[c][0];
-                angles.angle[c][cnt] = b;
+                if angles.angle[c][0] < 4 {
+                    angles.angle[c][0] += 1;
+                    let cnt = angles.angle[c][0];
+                    angles.angle[c][cnt] = b;
+                }
 
                 if angles.contract[a] == 0 && angles.contract[b] == 0 && angles.contract[c] == 0 {
-                    angles.diffangle[c][0] += 1;
-                    let dc = angles.diffangle[c][0];
-                    angles.diffangle[c][dc] = b;
+                    if angles.diffangle[c][0] < 4 {
+                        angles.diffangle[c][0] += 1;
+                        let dc = angles.diffangle[c][0];
+                        angles.diffangle[c][dc] = b;
+                    }
                 }
                 if angles.contract[a] != 0 {
-                    angles.sameangle[c][0] += 1;
-                    let sc = angles.sameangle[c][0];
-                    angles.sameangle[c][sc] = b;
+                    if angles.sameangle[c][0] < 4 {
+                        angles.sameangle[c][0] += 1;
+                        let sc = angles.sameangle[c][0];
+                        angles.sameangle[c][sc] = b;
+                    }
                 }
             }
         }
@@ -484,26 +496,34 @@ pub fn build_contract_angles(
 
         if a > c {
             if angles.contract[a] == 0 && angles.contract[b] == 0 && angles.contract[c] == 0 {
-                angles.diffangle[c][0] += 1;
-                let dc = angles.diffangle[c][0];
-                angles.diffangle[c][dc] = a;
+                if angles.diffangle[c][0] < 4 {
+                    angles.diffangle[c][0] += 1;
+                    let dc = angles.diffangle[c][0];
+                    angles.diffangle[c][dc] = a;
+                }
             }
             if angles.contract[b] != 0 {
-                angles.sameangle[c][0] += 1;
-                let sc = angles.sameangle[c][0];
-                angles.sameangle[c][sc] = a;
+                if angles.sameangle[c][0] < 4 {
+                    angles.sameangle[c][0] += 1;
+                    let sc = angles.sameangle[c][0];
+                    angles.sameangle[c][sc] = a;
+                }
             }
         }
         if b > c {
             if angles.contract[a] == 0 && angles.contract[b] == 0 && angles.contract[c] == 0 {
-                angles.diffangle[c][0] += 1;
-                let dc = angles.diffangle[c][0];
-                angles.diffangle[c][dc] = b;
+                if angles.diffangle[c][0] < 4 {
+                    angles.diffangle[c][0] += 1;
+                    let dc = angles.diffangle[c][0];
+                    angles.diffangle[c][dc] = b;
+                }
             }
             if angles.contract[a] != 0 {
-                angles.sameangle[c][0] += 1;
-                let sc = angles.sameangle[c][0];
-                angles.sameangle[c][sc] = b;
+                if angles.sameangle[c][0] < 4 {
+                    angles.sameangle[c][0] += 1;
+                    let sc = angles.sameangle[c][0];
+                    angles.sameangle[c][sc] = b;
+                }
             }
         }
     }
