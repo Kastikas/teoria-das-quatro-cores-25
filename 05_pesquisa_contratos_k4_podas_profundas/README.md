@@ -21,11 +21,11 @@ Nesta rodada da Frente B, expandimos a síntese algébrica sob o Lema de Walter 
 
 A chave metodológica que permitiu romper a barreira estrita da esparsidade de Robertson et al. (1997) é fundamentada no **Lema de Stromquist**, uma formulação topológica rigorosa que descreve os limites de contração de ciclos planares (anéis).
 
-O lema estabelece condições exatas sob as quais contrações de vértices no anel externo de uma configuração $K$ não produzem obstruções topológicas intrínsecas (laços que impediriam a 4-coloração) na triangulação planar $T$. Formalmente, seja um anel exterior $R = (v_1, v_2, \dots, v_n)$. Um subconjunto de arestas $E_c \subset E(R)$ é chamado de *contrato admissível* se e somente se:
+O lema estabelece condições exatas sob as quais contrações de arestas no interior de uma configuração $K$ (cercada pelo anel exterior $R$) não produzem obstruções topológicas intrínsecas (como laços ou arestas múltiplas) na triangulação planar $T$. Formalmente, seja uma configuração $G$ com anel exterior $R = (v_1, v_2, \dots, v_n)$. Um subconjunto de arestas internas $E_c \subset E(G) \setminus E(R)$ é chamado de *contrato admissível* se e somente se:
 1. Nenhuma componente conexa do grafo induzido por $E_c$ excede um limiar métrico no fecho planar;
 2. A contração canônica de $E_c$ no contraexemplo minimal induz um grafo planar $T'$ estritamente menor ($|V(T')| < |V(T)|$) que mantém as propriedades combinatórias para garantir uma 4-coloração sob indução forte.
 
-A aplicação exaustiva do Lema de Stromquist para contratos de ordem superior ($k \le 4$) validou as podas profundas de fronteira, demonstrando que a imposição de "esparsidade triangular estrita" não era um axioma fundamental do Teorema, mas sim uma conveniência computacional histórica (para evitar a certificação de sub-triangulações que desmoronam durante as cadeias de Kempe). Ao deletar arestas e fundir vértices obedecendo ao lema, a configuração resultante adquire a forma geométrica de uma *superconfiguração* que se sobrepõe a uma classe imensamente mais vasta de subgrafos planares no descarregamento.
+A aplicação exaustiva do Lema de Stromquist para contratos de ordem superior ($k \le 4$) validou as podas profundas, demonstrando que a restrição a contratos de tamanho $k \le 3$ não era um axioma fundamental do Teorema, mas sim uma conveniência computacional histórica de 1997. Ao contrair arestas internas obedecendo rigorosamente à esparsidade (nenhuma aresta no anel exterior e sem arestas adjacentes no mesmo triângulo) e à condição de tríade, a configuração resultante adquire a forma geométrica de uma *superconfiguração* que se sobrepõe a uma classe imensamente mais vasta de subgrafos planares no descarregamento.
 
 ### 2.2. A Formulação Algébrica sobre o Grupo de Klein ($V_4$) e a Equivalência de Tait
 
@@ -35,7 +35,7 @@ Na álgebra de coloração das partições do anel exterior, o problema da 4-col
 Uma configuração é considerada **D-redutível** se as colorações que se estendem ao interior sobre o anel exterior $R$ formam um subconjunto que intercepta \textit{todas} as classes de equivalência das partições não-cruzadas (cadeias de Kempe). Formalmente, para o espaço de configurações maximais consistentes gerado pelos fechamentos de Kempe, o número de colorações não resolvidas ($nlive$) converge a 0.
 
 #### 2.2.2. C-Redutibilidade
-Uma configuração é **C-redutível** se a sua extensão natural ao longo do anel não resolve todo o espaço de equivalência, mas existe um *contrato admissível* (por Stromquist) na borda de tamanho $k$ cuja contração gera um menor planar onde a configuração residual restrita anula o defeito em todas as partições em falha. Isso garante que a planaridade e a minimalidade do contraexemplo sejam contraditadas sem comprometer a colorabilidade.
+Uma configuração é **C-redutível** se a sua extensão natural ao longo do anel não resolve todo o espaço de equivalência, mas existe um *contrato admissível* (por Stromquist) de arestas internas de tamanho $k \le 4$ cuja contração gera um menor planar onde a configuração residual restrita anula o defeito em todas as partições em falha. Isso garante que a planaridade e a minimalidade do contraexemplo sejam contraditadas sem comprometer a colorabilidade.
 
 ### 2.3. Otimização Global via Integer Linear Programming (ILP)
 
