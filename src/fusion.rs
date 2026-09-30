@@ -247,7 +247,7 @@ pub struct FusionCandidatePair {
 struct PrecomputedConf {
     ring: usize,
     verts: usize,
-    sorted_degs: Vec<usize>,
+    degree_counts: [u8; 16],
     prefix: String,
 }
 
@@ -260,13 +260,18 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
         .map(|c| {
             let r = c.ring();
             let v = c.verts();
-            let mut sorted_degs: Vec<usize> = (r + 1..=v).map(|vi| c.mat[vi][0]).collect();
-            sorted_degs.sort();
+            let mut degree_counts = [0u8; 16];
+            for vi in (r + 1)..=v {
+                let deg = c.mat[vi][0];
+                if deg < 16 {
+                    degree_counts[deg] += 1;
+                }
+            }
             let prefix = c.name.split('.').next().unwrap_or("").to_string();
             PrecomputedConf {
                 ring: r,
                 verts: v,
-                sorted_degs,
+                degree_counts,
                 prefix,
             }
         })
@@ -293,12 +298,18 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
 
             // Case A: Same number of vertices, compare sorted interior degrees
             if p1.verts == p2.verts {
-                let diff_count = p1
-                    .sorted_degs
-                    .iter()
-                    .zip(p2.sorted_degs.iter())
-                    .filter(|&(a, b)| a != b)
-                    .count();
+                let mut diff_count: usize = 0;
+                for d in 0..16 {
+                    let c_1 = p1.degree_counts[d];
+                    let c_2 = p2.degree_counts[d];
+                    if c_1 > c_2 {
+                        diff_count += (c_1 - c_2) as usize;
+                    } else {
+                        diff_count += (c_2 - c_1) as usize;
+                    }
+                }
+                // Div by 2 because each mismatch changes one degree to another, affecting 2 counts
+                diff_count /= 2;
 
                 if diff_count <= 2 || shared_prefix.is_some() {
                     pairs.push(FusionCandidatePair {
@@ -375,15 +386,8 @@ pub fn is_subconfiguration(sub: &Configuration, parent: &Configuration) -> bool 
 
     // If sub_int == parent_int and rings match, check isomorphism
     if sub_int == parent_int && sub_ring == parent_ring {
-        // Direct isomorphism test: sorted degree sequence must match exactly
-        let mut sub_int_degs: Vec<usize> =
-            (sub_ring + 1..=sub_verts).map(|v| sub.mat[v][0]).collect();
-        let mut parent_int_degs: Vec<usize> = (parent_ring + 1..=parent_verts)
-            .map(|v| parent.mat[v][0])
-            .collect();
-        sub_int_degs.sort_unstable();
-        parent_int_degs.sort_unstable();
-        if sub_int_degs != parent_int_degs {
+        // Direct isomorphism test: sorted degree counts must match exactly
+        if sub_counts != parent_counts {
             return false;
         }
     }
@@ -406,11 +410,10 @@ pub fn optimize_all_contracts(
     engine: &ReducibilityEngine,
     limit: Option<usize>,
 ) -> (Vec<Configuration>, ContractOptimizationStats) {
-    let mut optimized = confs.to_vec();
-    let mut stats = ContractOptimizationStats::default();
-
+    let mut candidates = Vec::new();
     let mut count = 0;
-    for conf in optimized.iter_mut() {
+
+    for conf in confs {
         let old_len = conf.contract_edges.len();
         if old_len == 0 {
             continue;
@@ -422,28 +425,76 @@ pub fn optimize_all_contracts(
             }
         }
         count += 1;
-        stats.total_c_confs += 1;
-
-        if old_len > 1 {
-            // Try to find a contract with strictly fewer edges
-            if let Some(res) = synthesize_contract(conf, engine, old_len - 1) {
-                let saved = old_len - res.num_edges;
-                stats.total_edges_saved += saved;
-                match res.num_edges {
-                    1 => stats.reduced_to_1 += 1,
-                    2 => stats.reduced_to_2 += 1,
-                    3 => stats.reduced_to_3 += 1,
-                    _ => {}
-                }
-                conf.contract_edges = res.edges;
-                continue;
-            }
-        }
-
-        stats.unchanged += 1;
+        candidates.push(conf.clone());
     }
 
-    (optimized, stats)
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let chunk_size = candidates.len().div_ceil(num_threads).max(1);
+
+    let mut stats = ContractOptimizationStats::default();
+    stats.total_c_confs = candidates.len();
+
+    let optimized_stats = std::thread::scope(|s| {
+        let mut handles = Vec::new();
+
+        for chunk in candidates.chunks_mut(chunk_size) {
+            let eng = engine; // Engine is stateless after init, can be shared
+            handles.push(s.spawn(move || {
+                let mut local_stats = ContractOptimizationStats::default();
+                for conf in chunk.iter_mut() {
+                    let old_len = conf.contract_edges.len();
+
+                    if old_len > 1 {
+                        if let Some(res) = synthesize_contract(conf, eng, old_len - 1) {
+                            let saved = old_len - res.num_edges;
+                            local_stats.total_edges_saved += saved;
+                            match res.num_edges {
+                                1 => local_stats.reduced_to_1 += 1,
+                                2 => local_stats.reduced_to_2 += 1,
+                                3 => local_stats.reduced_to_3 += 1,
+                                _ => {}
+                            }
+                            conf.contract_edges = res.edges;
+                            continue;
+                        }
+                    }
+                    local_stats.unchanged += 1;
+                }
+                local_stats
+            }));
+        }
+
+        let mut all_stats = ContractOptimizationStats::default();
+        all_stats.total_c_confs = stats.total_c_confs;
+        for h in handles {
+            let res = h.join().unwrap();
+            all_stats.reduced_to_1 += res.reduced_to_1;
+            all_stats.reduced_to_2 += res.reduced_to_2;
+            all_stats.reduced_to_3 += res.reduced_to_3;
+            all_stats.unchanged += res.unchanged;
+            all_stats.total_edges_saved += res.total_edges_saved;
+        }
+        all_stats
+    });
+
+    // Reconstruct optimized configurations array
+    let mut optimized_map = std::collections::HashMap::new();
+    for conf in candidates {
+        optimized_map.insert(conf.name.clone(), conf);
+    }
+
+    let mut final_optimized = Vec::new();
+    for conf in confs {
+        if let Some(opt_conf) = optimized_map.get(&conf.name) {
+            final_optimized.push(opt_conf.clone());
+        } else {
+            final_optimized.push(conf.clone());
+        }
+    }
+
+    (final_optimized, optimized_stats)
 }
 
 #[derive(Debug, Clone)]
@@ -461,17 +512,23 @@ pub struct FlipPair {
 pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
     let mut flip_pairs = Vec::new();
 
-    // Precompute edge sets for each configuration
-    let mut edge_sets = Vec::with_capacity(confs.len());
+    // Max vertices is 32. 1-indexed, so max ID is 32.
+    // We can map an edge (u, v) where u < v to a bit index: u * 64 + v.
+    // Max bit index is 32 * 64 + 32 = 2080.
+    // 2080 / 64 = 32.5 -> 33 u64s needed.
+
+    let mut edge_bitsets = Vec::with_capacity(confs.len());
     for conf in confs {
-        let mut edges = std::collections::HashSet::new();
+        let mut bitset = [0u64; 33];
         for u in 1..=conf.verts() {
             for h in 1..=conf.mat[u][0] {
                 let v = conf.mat[u][h];
-                edges.insert((u.min(v), u.max(v)));
+                let (min_v, max_v) = (u.min(v), u.max(v));
+                let bit_idx = min_v * 64 + max_v;
+                bitset[bit_idx / 64] |= 1 << (bit_idx % 64);
             }
         }
-        edge_sets.push(edges);
+        edge_bitsets.push(bitset);
     }
 
     for i in 0..confs.len() {
@@ -482,39 +539,50 @@ pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
                 continue;
             }
 
-            let e1 = &edge_sets[i];
-            let e2 = &edge_sets[j];
+            let b1 = &edge_bitsets[i];
+            let b2 = &edge_bitsets[j];
 
-            let mut diff1 = Vec::new();
-            for e in e1 {
-                if !e2.contains(e) {
-                    diff1.push(*e);
+            let mut diff_count = 0;
+            let mut diff1_edge = (0, 0);
+            let mut diff2_edge = (0, 0);
+
+            for k in 0..33 {
+                let xor = b1[k] ^ b2[k];
+                if xor != 0 {
+                    let mut temp = xor;
+                    while temp != 0 {
+                        // find lowest set bit
+                        let bit_offset = temp.trailing_zeros() as usize;
+                        let bit_idx = k * 64 + bit_offset;
+                        let u = bit_idx / 64;
+                        let v = bit_idx % 64;
+
+                        if (b1[k] & (1 << bit_offset)) != 0 {
+                            diff1_edge = (u, v);
+                        } else {
+                            diff2_edge = (u, v);
+                        }
+
+                        diff_count += 1;
+                        temp &= temp - 1; // clear lowest set bit
+                    }
                 }
             }
-            if diff1.len() != 1 {
-                continue;
-            }
 
-            let mut diff2 = Vec::new();
-            for e in e2 {
-                if !e1.contains(e) {
-                    diff2.push(*e);
-                }
+            // An exact flip pair means exactly one edge was added and one removed
+            // diff_count will be exactly 2 in this case.
+            if diff_count == 2 && diff1_edge != (0, 0) && diff2_edge != (0, 0) {
+                flip_pairs.push(FlipPair {
+                    idx1: i,
+                    idx2: j,
+                    name1: c1.name.clone(),
+                    name2: c2.name.clone(),
+                    ring: c1.ring(),
+                    verts: c1.verts(),
+                    edge1: diff1_edge,
+                    edge2: diff2_edge,
+                });
             }
-            if diff2.len() != 1 {
-                continue;
-            }
-
-            flip_pairs.push(FlipPair {
-                idx1: i,
-                idx2: j,
-                name1: c1.name.clone(),
-                name2: c2.name.clone(),
-                ring: c1.ring(),
-                verts: c1.verts(),
-                edge1: diff1[0],
-                edge2: diff2[0],
-            });
         }
     }
 
@@ -608,5 +676,51 @@ mod tests {
         );
         assert!(res.num_edges <= 4);
         assert_eq!(res.maximal_consistent_subset, 154);
+    }
+
+    #[test]
+    fn test_bitset_exact_flip() {
+        let mut c1 = Configuration::new(1, 4, 4, 0);
+        c1.set_vertex(1, &[2, 3, 4]);
+        c1.set_vertex(2, &[1, 3]);
+        c1.set_vertex(3, &[1, 2, 4]);
+        c1.set_vertex(4, &[1, 3]);
+
+        let mut c2 = Configuration::new(2, 4, 4, 0);
+        c2.set_vertex(1, &[2, 4]);
+        c2.set_vertex(2, &[1, 3, 4]);
+        c2.set_vertex(3, &[2, 4]);
+        c2.set_vertex(4, &[1, 2, 3]);
+
+        let flips = find_exact_flip_pairs(&[c1, c2]);
+        assert_eq!(flips.len(), 1);
+        let flip = &flips[0];
+
+        assert!((flip.edge1 == (1, 3) && flip.edge2 == (2, 4)) || (flip.edge1 == (2, 4) && flip.edge2 == (1, 3)));
+    }
+
+    #[test]
+    fn test_optimize_parallel() {
+        let mut c1 = Configuration::new(1, 12, 8, 81);
+        c1.name = "2.126".to_string();
+        c1.contract_edges = vec![(1, 9), (3, 9), (5, 11), (7, 11)];
+        c1.set_vertex(1, &[2, 9, 12, 8]);
+        c1.set_vertex(2, &[3, 9, 1]);
+        c1.set_vertex(3, &[4, 10, 9, 2]);
+        c1.set_vertex(4, &[5, 10, 3]);
+        c1.set_vertex(5, &[6, 11, 10, 4]);
+        c1.set_vertex(6, &[7, 11, 5]);
+        c1.set_vertex(7, &[8, 12, 11, 6]);
+        c1.set_vertex(8, &[1, 12, 7]);
+        c1.set_vertex(9, &[2, 3, 10, 11, 12, 1]);
+        c1.set_vertex(10, &[3, 4, 5, 11, 9]);
+        c1.set_vertex(11, &[10, 5, 6, 7, 12, 9]);
+        c1.set_vertex(12, &[11, 7, 8, 1, 9]);
+
+        let engine = ReducibilityEngine::new();
+        let (opt, stats) = optimize_all_contracts(&[c1], &engine, None);
+        assert_eq!(opt.len(), 1);
+        assert!(opt[0].contract_edges.len() < 4); // it should reduce 4 edges to something smaller
+        assert_eq!(stats.total_c_confs, 1);
     }
 }
