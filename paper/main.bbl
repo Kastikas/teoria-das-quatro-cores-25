@@ -45,10 +45,22 @@ Walter Stromquist.
 \newblock Some results on reducible configurations in the four-color problem.
 \newblock {\em Doctoral Dissertation, Harvard University}, 1975.
 
+\bibitem{tait1880remarks}
+Peter~Guthrie Tait.
+\newblock Remarks on the colouring of maps.
+\newblock {\em Proceedings of the Royal Society of Edinburgh}, 10:501--503,
+  1880.
+
 \bibitem{tutte1963how}
 William~T Tutte.
 \newblock How to draw a graph.
 \newblock {\em Proceedings of the London Mathematical Society}, 3(1):743--767,
   1963.
+
+\bibitem{wagner1936bemerkungen}
+Klaus Wagner.
+\newblock Bemerkungen zum vierfarbenproblem.
+\newblock {\em Jahresbericht der Deutschen Mathematiker-Vereinigung},
+  46:26--32, 1936.
 
 \end{thebibliography}
