@@ -1006,6 +1006,61 @@ fn main() {
         return;
     }
 
+    if args.len() > 1 && args[1] == "generate-2flips" {
+        let in_path = if args.len() > 2 { &args[2] } else { "unavoidable.conf" };
+        let out_path = if args.len() > 3 { &args[3] } else { "candidates_2flips.conf" };
+        let filter_path = if args.len() > 4 { Some(&args[4]) } else { None };
+
+        let mut seen = std::collections::HashSet::new();
+
+        if let Some(fp) = filter_path {
+            println!("Carregando configurações existentes de {} para filtragem de duplicatas...", fp);
+            if let Ok(pool_confs) = read_configurations(fp) {
+                for c in &pool_confs {
+                    seen.insert(canonical_edge_signature(c));
+                }
+                println!("Carregadas {} assinaturas do pool existente.", seen.len());
+            }
+        }
+
+        println!("Carregando configurações base de {} para mutações de 2-flips (d=2)...", in_path);
+        match read_configurations(in_path) {
+            Ok(configs) => {
+                let mut out_file = File::create(out_path).expect("Erro ao criar arquivo de saída");
+                let mut generated_count = 0;
+                let mut unique_count = 0;
+
+                for conf in &configs {
+                    seen.insert(canonical_edge_signature(conf));
+
+                    let flips1 = flipper::generate_internal_flips(conf);
+                    for f1 in &flips1 {
+                        seen.insert(canonical_edge_signature(&f1.conf));
+                        let flips2 = flipper::generate_internal_flips(&f1.conf);
+                        generated_count += flips2.len();
+
+                        for f2 in flips2 {
+                            let sig = canonical_edge_signature(&f2.conf);
+                            if seen.insert(sig) {
+                                let mut flipped_conf = f2.conf;
+                                flipped_conf.name = format!("{}_2f_{}_{}_{}_{}", conf.name, f1.flipped_edge.0, f1.flipped_edge.1, f2.flipped_edge.0, f2.flipped_edge.1);
+                                flipped_conf.contract_edges.clear();
+                                let text = format_configuration(&flipped_conf);
+                                out_file.write_all(text.as_bytes()).unwrap();
+                                unique_count += 1;
+                            }
+                        }
+                    }
+                }
+
+                println!("Concluído! Total de mutações de 2-flips geradas: {}", generated_count);
+                println!("Mutações inéditas e únicas adicionadas: {} salvas em {}", unique_count, out_path);
+            }
+            Err(e) => eprintln!("Erro ao ler {}: {}", in_path, e),
+        }
+        return;
+    }
+
     if args.len() > 1 && args[1] == "mine-parallel" {
         let path = if args.len() > 2 {
             &args[2]
