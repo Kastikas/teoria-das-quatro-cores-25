@@ -119,7 +119,7 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
                     if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
                         if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
                             let insert_pos = pos_u.max(pos_v);
-                            nbs[insert_pos..nbs_len+1].rotate_right(1);
+                            nbs[insert_pos..nbs_len + 1].rotate_right(1);
                             nbs[insert_pos] = z;
                             nbs_len += 1;
                         }
@@ -128,7 +128,7 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
                     if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
                         if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
                             let insert_pos = pos_u.max(pos_v);
-                            nbs[insert_pos..nbs_len+1].rotate_right(1);
+                            nbs[insert_pos..nbs_len + 1].rotate_right(1);
                             nbs[insert_pos] = w;
                             nbs_len += 1;
                         }

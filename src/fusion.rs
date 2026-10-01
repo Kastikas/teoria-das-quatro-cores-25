@@ -696,7 +696,10 @@ mod tests {
         assert_eq!(flips.len(), 1);
         let flip = &flips[0];
 
-        assert!((flip.edge1 == (1, 3) && flip.edge2 == (2, 4)) || (flip.edge1 == (2, 4) && flip.edge2 == (1, 3)));
+        assert!(
+            (flip.edge1 == (1, 3) && flip.edge2 == (2, 4))
+                || (flip.edge1 == (2, 4) && flip.edge2 == (1, 3))
+        );
     }
 
     #[test]
