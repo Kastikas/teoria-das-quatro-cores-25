@@ -1,29 +1,28 @@
-# Pesquisa Avançada: Fronteira Sub-394 — Novo Recorde Mundial: 243 Configurações
+# Pesquisa: Fronteira Sub-394 — Conjunto de 243 Configurações
 
-> **Status:** Novo Recorde Mundial Absoluto de Compacidade do Teorema das Quatro Cores  
 > **Tamanho do Catálogo Inevitável:** **243 Configurações**  
 > **Redução vs RSST (1997 / Coq 2005):** **-390 configurações (-61.6%)**  
-> **Redução vs Recorde Anterior (305):** **-62 configurações (-20.3%)**  
+> **Redução vs Etapa Anterior (305):** **-62 configurações (-20.3%)**  
 > **Redução vs Base Inicial (394):** **-151 configurações (-38.3%)**  
 > **Dupla Certificação:** 100% verificado no descarregamento RSST C (`present7`..`present11`) e 100% provado redutível em Rust puro (`243/243`).
 
 ---
 
-## 1. O Grande Salto: Da Barreira dos 305 para 243
+## 1. O Salto para 243 Configurações
 
-Nesta etapa de pesquisa profunda (Frente 3), desbloqueamos podas profundas de 2ª ordem ($n \to n-2$) combinadas com contratos de ordem $k=3$ sob o Lema de Stromquist (1975).
+Nesta etapa de pesquisa (Frente 3), aplicamos podas de 2ª ordem ($n \to n-2$) combinadas com contratos de ordem $k=3$ sob o Lema de Stromquist (1975).
 
-O colapso combinatorial obtido:
+O fluxo metodológico:
 1. **Síntese Algébrica Paralela em Rust Puro:**
    - Sintetizamos contratos de ordem superior ($k=3$) para um conjunto não-isomórfico de 321 ultra-superconfigurações.
    - **321 de 321 (100%)** foram formalmente certificadas C-redutíveis em 179 segundos.
 2. **Reconhecedor Universal Estendido em C:**
-   - Generalizamos o verificador oficial RSST (`discharge.c` e `discharge_track.c`) para aceitar contatos de ordem $k \le 4$, preservando a integridade geométrica de subgrafos induzidos (`CheckIso`).
-3. **Absorção Natural dos Pares de Flip:**
-   - Como demonstrado teoricamente, as ultra-superconfigurações geradas pela Frente 3 absorveram naturalmente os pares de flip da Frente 2 (como os pares `7354` e `7326`, e os irmãos minoritários de `7322`), eliminando a necessidade de tratar assimetrias manuais.
+   - Generalizamos o verificador oficial RSST (`discharge.c` e `discharge_track.c`) para aceitar contratos de ordem $k \le 4$, preservando a integridade geométrica de subgrafos induzidos (`CheckIso`).
+3. **Absorção dos Pares de Flip:**
+   - As ultra-superconfigurações geradas pela Frente 3 absorveram os pares de flip da Frente 2 (como os pares `7354` e `7326`, e os irmãos minoritários de `7322`).
 4. **Otimização Global Exata (HiGHS MILP):**
    - Mapeamos **187.281 eventos de redução** em 26.535 estados críticos únicos nas 5 apresentações canônicas (`present7` a `present11`).
-   - O solver HiGHS provou que o tamanho mínimo global absoluto é de **apenas 243 configurações**!
+   - O solver HiGHS encontrou a solução com **243 configurações** dentro do pool avaliado.
 
 ---
 

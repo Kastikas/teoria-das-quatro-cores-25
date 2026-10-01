@@ -1,9 +1,8 @@
-# Pesquisa Avançada: Fronteira Sub-150 — Novo Recorde Mundial: 149 Configurações
+# Pesquisa: Fronteira Sub-150 — Conjunto de 149 Configurações
 
-> **Status:** Novo Recorde Mundial Absoluto de Compacidade do Teorema das Quatro Cores  
 > **Tamanho do Catálogo Inevitável:** **149 Configurações**  
 > **Redução vs RSST Canônico (633):** **-484 configurações (-76.46%)**  
-> **Redução vs Marco Anterior (177):** **-28 configurações (-15.82%)**  
+> **Redução vs Etapa Anterior (177):** **-28 configurações (-15.82%)**  
 > **Redução vs Base Inicial (394):** **-245 configurações (-62.18%)**  
 > **Dupla Certificação:** 100% verificado no descarregamento RSST C (`present7`..`present11` com 0 déficit) e 100% provado redutível em Rust puro (`149/149` em 84.90s).
 
@@ -63,7 +62,7 @@ onde $S(A_i)$ denota o subconjunto de configurações topologicamente ativáveis
    - Unificamos o catálogo base de 177 com as 862 superconfigurações aprovadas.
    - O rastreamento global mapeou **187.301 eventos de redução** em 52.578 estados críticos ao longo de `present7`, `present8`, `present9`, `present10` e `present11`.
 4. **Otimização Global Exata (HiGHS ILP) com Fechamento Terminal:**
-   - O solver HiGHS provou que o tamanho mínimo global absoluto é de apenas **149 configurações**.
+   - O solver HiGHS encontrou a solução com **149 configurações** dentro do pool avaliado.
 5. **Dupla Certificação Formal Automatizada:**
    - **`discharge` C:** Aprovado com 0 déficit em todas as 5 apresentações planares canônicas.
    - **Rust puro:** **149/149 configurações provadas redutíveis** (22 D-redutíveis e 127 C-redutíveis) em 84.90s.
@@ -72,7 +71,7 @@ onde $S(A_i)$ denota o subconjunto de configurações topologicamente ativáveis
 
 ## 4. Como Reproduzir a Verificação Completa
 
-Para executar a verificação formal dupla do novo recorde de 149 configurações:
+Para executar a verificação formal dupla do conjunto de 149 configurações:
 
 ```bash
 cd 05_pesquisa_contratos_k4_podas_profundas
@@ -86,7 +85,7 @@ cd 05_pesquisa_contratos_k4_podas_profundas
 | Modelo / Marco | Tamanho | Redução vs RSST (633) | Verificador C (`discharge`) | Verificador Rust |
 | :--- | :---: | :---: | :---: | :---: |
 | **RSST Canônico (1997 / Coq 2005)** | 633 | 0% | 5/5 apresentações | 633/633 |
-| **Recorde Compacto (Frente 1)** | 394 | -37.8% | 5/5 apresentações | 394/394 |
+| **Modelo Compacto (Frente 1)** | 394 | -37.8% | 5/5 apresentações | 394/394 |
 | **Modelo Podas de 2ª Ordem** | 243 | -61.6% | 5/5 apresentações | 243/243 |
 | **Modelo Sub-200 (Frente 4)** | 177 | -72.0% | 5/5 apresentações | 177/177 |
-| **Novo Recorde Mundial (Sub-150 / Frente B)** | **149** | **-76.5%** | **5/5 apresentações** | **149/149** |
+| **Modelo Sub-150 (Frente B)** | **149** | **-76.5%** | **5/5 apresentações** | **149/149** |

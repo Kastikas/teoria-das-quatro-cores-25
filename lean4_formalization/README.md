@@ -6,10 +6,10 @@
 
 ---
 
-## 1. Por que esta formalização em Lean 4 é um Marco Histórico?
+## 1. Motivação e Contexto
 
-* **O Desafio Histórico:** Desde a prova de Georges Gonthier no Coq em 2005 (baseada nas 633 configurações de RSST), a comunidade de métodos formais considerava a formalização do Teorema das Quatro Cores no Lean 4 uma tarefa hercúlea e quase proibitiva, devido ao peso computacional de codificar 633 grafos e provar centenas de lemas de contração profunda ($k=4$).
-* **A Quebra do Paradigma:** Com a redução para **25 configurações** e todas com **$k \le 2$ arestas de contração**, este pacote formaliza a estrutura completa das configurações inevitáveis em poucas páginas de código Lean 4 puro, compilando em menos de 10 segundos.
+* **O Desafio:** Desde a prova de Georges Gonthier no Coq em 2005 (baseada nas 633 configurações de RSST), a formalização do Teorema das Quatro Cores em provadores interativos modernos tem sido um desafio considerável, devido ao peso computacional de codificar 633 grafos e provar lemas de contração profunda ($k=4$).
+* **A Simplificação com 25 Configurações:** Com a redução para **25 configurações** e todas com **$k \le 2$ arestas de contração**, este pacote formaliza a estrutura completa das configurações inevitáveis em poucas páginas de código Lean 4 puro, compilando em menos de 10 segundos.
 
 ---
 
@@ -25,7 +25,7 @@
     - `Configuration.isChordlessRing`: garantia de anel sem cordas internas.
     - `Configuration.isWellFormed`: invariante estrutural da triangulação com bordo.
 * `FourColor/Unavoidable25.lean`:
-  - Instancia cada uma das 25 configurações recordistas (`conf1` a `conf25`).
+  - Instancia cada uma das 25 configurações (`conf1` a `conf25`).
   - Define o catálogo formal `unavoidable25 : List Configuration`.
   - **Teoremas Formais Provados pelo Kernel:**
     1. `unavoidable25_cardinality : unavoidable25.length = 25 := by rfl`

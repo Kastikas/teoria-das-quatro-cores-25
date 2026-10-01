@@ -1,30 +1,29 @@
-# Fronteira Sub-140: Podas de 4ª Ordem Profunda ($n \to n-4$) e Síntese Algébrica
-### 🏆 Novo Recorde Mundial Absoluto: 137 Configurações Inevitáveis
+# Fronteira Sub-140: Podas de 4ª Ordem ($n \to n-4$) e Síntese Algébrica
+### Conjunto Inevitável de 137 Configurações
 
-> **Status:** Novo Recorde Mundial Absoluto do Teorema das Quatro Cores (4CT)  
 > **Tamanho do Catálogo Inevitável:** **137 Configurações**  
 > **Redução vs RSST Canônico (1997 / Coq 2005):** **-496 configurações (-78,36%)**  
-> **Redução vs Marco Anterior (149):** **-12 configurações (-8,05%)**  
+> **Redução vs Etapa Anterior (149):** **-12 configurações (-8,05%)**  
 > **Dupla Certificação:**  
 > - **C oficial (`discharge`):** 100% verificado nas 5 apresentações (`present7` a `present11`) com 0 déficit de carga.  
-> - **Rust puro (`quatro_cores`):** **137/137 (100%)** formalmente provadas redutíveis (20 D-redutíveis, 117 C-redutíveis).
+> - **Rust puro (`quatro_cores`):** **137/137 (100%)** provadas redutíveis (20 D-redutíveis, 117 C-redutíveis).
 
 ---
 
 ## 1. Visão Geral da Metodologia
 
-Nesta rodada pioneira, exploramos a expansão combinatória de **podas de 4ª ordem profunda ($n \to n-4$)** a partir das configurações canônicas e da base das 149 configurações do recorde anterior.
+Nesta etapa, exploramos a expansão combinatória de **podas de 4ª ordem ($n \to n-4$)** a partir das configurações canônicas e da base das 149 configurações da etapa anterior.
 
-### Pilares da Conquista:
+### Etapas Metodológicas:
 1. **Varredura Combinatória de 4ª Ordem:**
    - 136 novas superconfigurações de 1ª, 2ª, 3ª e 4ª ordem foram geradas.
    - O motor paralelo `quatro_cores synth-all` certificou **136 de 136 (100%)** como C-redutíveis com contratos de até 4 arestas ($k \le 4$) sob o Lema de Stromquist.
-2. **Triagem Geométrica Paralela contra CheckIso:**
+2. **Triagem Geométrica contra CheckIso:**
    - 43 superconfigurações foram aprovadas sem conflitos de anel no reconhecedor universal do `discharge`.
 3. **Mapeamento Bipartido em Pool de 1.082 Configurações:**
    - `discharge_track` processou **187.301 eventos de redução** nas 5 apresentações canônicas.
 4. **Resolução Exata via HiGHS Integer Linear Programming (ILP):**
-   - O solver exato de *Minimum Set Cover* encontrou a combinação mínima viável, estabelecendo o novo recorde de **137 configurações**!
+   - O solver exato de *Minimum Set Cover* encontrou a combinação mínima viável de **137 configurações**.
 
 ---
 

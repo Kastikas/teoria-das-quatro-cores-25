@@ -1,6 +1,6 @@
-# Modelo Compacto Recorde (394 Configurações)
+# Modelo Compacto (394 Configurações)
 
-> **Status:** Novo Recorde Mundial de Redução do Teorema das Quatro Cores (4CT)  
+> **Descrição:** Conjunto reduzido do Teorema das Quatro Cores (4CT) compatível com a suíte original de RSST.  
 > **Redução obtida:** **-37,76%** vs. RSST 633 (1997) e Gonthier Coq (2005) | **-73,31%** vs. Appel & Haken 1476 (1976)  
 > **Certificação Dupla:** 100% Verificado no Motor Rust Puro + 100% Aprovado no Verificador Oficial RSST C (`discharge`)
 
@@ -30,7 +30,7 @@ Através do solucionador exato em Rust ([`src/set_cover.rs`](file:///home/ivanlr
 
 ## 3. Conteúdo da Pasta
 
-* [`unavoidable_394.conf`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/02_modelo_394_recorde_compacto/unavoidable_394.conf): O catálogo de 394 configurações recorde.
+* [`unavoidable_394.conf`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/02_modelo_394_recorde_compacto/unavoidable_394.conf): O catálogo de 394 configurações.
 * [`rules`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/02_modelo_394_recorde_compacto/rules): As 67 regras de descarregamento da RSST.
 * `present7` a `present11`: As 5 apresentações planares.
 * `discharge`: O binário do verificador C oficial da RSST.
