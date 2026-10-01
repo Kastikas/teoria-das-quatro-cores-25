@@ -7,3 +7,4 @@ outlet.et
 test_*.conf
 __pycache__/
 *.pyc
+*.toc
