@@ -49,6 +49,20 @@ fn format_configuration(conf: &Configuration) -> String {
     out
 }
 
+fn canonical_edge_signature(conf: &Configuration) -> (usize, usize, Vec<(usize, usize)>) {
+    let mut edges = Vec::new();
+    for u in 1..=conf.verts() {
+        for h in 1..=conf.mat[u][0] {
+            let v = conf.mat[u][h];
+            if u < v {
+                edges.push((u, v));
+            }
+        }
+    }
+    edges.sort_unstable();
+    (conf.ring(), conf.verts(), edges)
+}
+
 fn make_birkhoff_diamond() -> Configuration {
     let mut conf = Configuration::new(1, 10, 6, 16);
     conf.set_vertex(1, &[2, 9, 6]);
@@ -688,21 +702,29 @@ fn main() {
                             let eng = ReducibilityEngine::new();
                             let mut local_res = Vec::new();
                             for conf in chunk {
-                                let angles = find_angles(conf);
-                                let report = eng.test_configuration(conf, &angles);
-                                if report.reduction_type == reducibility::ReductionType::DReducible
-                                {
-                                    let mut c = conf.clone();
-                                    c.contract_edges.clear();
-                                    local_res.push(c);
+                                let mut clean_conf = conf.clone();
+                                clean_conf.contract_edges.clear();
+                                let angles = find_angles(&clean_conf);
+                                let (live, nlive) = eng.compute_consistent_live(&clean_conf, &angles);
+                                if nlive == 0 {
+                                    local_res.push(clean_conf);
                                     continue;
                                 }
-                                if let Some(res) =
-                                    fusion::synthesize_contract(conf, &eng, max_edges)
-                                {
-                                    let mut c = conf.clone();
-                                    c.contract_edges = res.edges;
-                                    local_res.push(c);
+                                let eff_max_edges = if clean_conf.ring() >= 13 {
+                                    max_edges.min(2)
+                                } else {
+                                    max_edges
+                                };
+                                if let Some(res) = fusion::synthesize_contract_with_live(
+                                    &clean_conf,
+                                    &eng,
+                                    &angles,
+                                    &live,
+                                    nlive,
+                                    eff_max_edges,
+                                ) {
+                                    clean_conf.contract_edges = res.edges;
+                                    local_res.push(clean_conf);
                                 }
                             }
                             local_res
@@ -929,6 +951,57 @@ fn main() {
                     }
                 }
             }
+        }
+        return;
+    }
+
+    if args.len() > 1 && args[1] == "generate-flips" {
+        let in_path = if args.len() > 2 { &args[2] } else { "unavoidable.conf" };
+        let out_path = if args.len() > 3 { &args[3] } else { "candidates_flips.conf" };
+        let filter_path = if args.len() > 4 { Some(&args[4]) } else { None };
+
+        let mut seen = std::collections::HashSet::new();
+
+        if let Some(fp) = filter_path {
+            println!("Carregando configurações existentes de {} para filtragem de duplicatas...", fp);
+            if let Ok(pool_confs) = read_configurations(fp) {
+                for c in &pool_confs {
+                    seen.insert(canonical_edge_signature(c));
+                }
+                println!("Carregadas {} assinaturas do pool existente.", seen.len());
+            }
+        }
+
+        println!("Carregando configurações base de {} para mutações planares...", in_path);
+        match read_configurations(in_path) {
+            Ok(configs) => {
+                let mut out_file = File::create(out_path).expect("Erro ao criar arquivo de saída");
+                let mut generated_count = 0;
+                let mut unique_count = 0;
+
+                for conf in &configs {
+                    seen.insert(canonical_edge_signature(conf));
+
+                    let flips = flipper::generate_internal_flips(conf);
+                    generated_count += flips.len();
+
+                    for f in flips {
+                        let sig = canonical_edge_signature(&f.conf);
+                        if seen.insert(sig) {
+                            let mut flipped_conf = f.conf;
+                            flipped_conf.name = format!("{}_f{}_{}_{}_{}", conf.name, f.flipped_edge.0, f.flipped_edge.1, f.new_edge.0, f.new_edge.1);
+                            flipped_conf.contract_edges.clear();
+                            let text = format_configuration(&flipped_conf);
+                            out_file.write_all(text.as_bytes()).unwrap();
+                            unique_count += 1;
+                        }
+                    }
+                }
+
+                println!("Concluído! Total de mutações geradas: {}", generated_count);
+                println!("Mutações inéditas e únicas adicionadas: {} salvas em {}", unique_count, out_path);
+            }
+            Err(e) => eprintln!("Erro ao ler {}: {}", in_path, e),
         }
         return;
     }

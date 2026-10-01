@@ -13,7 +13,6 @@ pub struct ContractSearchResult {
     pub maximal_consistent_subset: usize,
 }
 
-/// Synthesize C-reducing contracts for a configuration whose D-reducibility failed (nlive > 0).
 pub fn synthesize_contract(
     conf: &Configuration,
     engine: &ReducibilityEngine,
@@ -23,11 +22,26 @@ pub fn synthesize_contract(
     clean_conf.contract_edges.clear();
     let base_angles = find_angles(&clean_conf);
 
-    let ring = conf.ring();
     let (live, nlive) = engine.compute_consistent_live(&clean_conf, &base_angles);
-
     if nlive == 0 {
-        // Already D-reducible! No contract needed.
+        return None;
+    }
+
+    synthesize_contract_with_live(&clean_conf, engine, &base_angles, &live, nlive, max_contracts)
+}
+
+/// Synthesize C-reducing contracts reusing precomputed live coloring fixed-point.
+pub fn synthesize_contract_with_live(
+    conf: &Configuration,
+    engine: &ReducibilityEngine,
+    base_angles: &crate::graph::Angles,
+    live: &[u8],
+    nlive: usize,
+    max_contracts: usize,
+) -> Option<ContractSearchResult> {
+    let clean_conf = conf;
+    let ring = conf.ring();
+    if nlive == 0 {
         return None;
     }
 

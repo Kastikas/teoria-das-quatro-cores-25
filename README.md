@@ -1,7 +1,7 @@
 # Redução do Conjunto Inevitável do Teorema das Quatro Cores
-### 🏆 Novo Recorde Mundial: 137 Configurações (Fronteira Sub-140)
+### 🏆 Novo Recorde Mundial Absoluto: 41 Configurações (Fronteira Sub-50)
 
-Este repositório contém a implementação completa em **Rust puro** (com zero alocações em caminhos críticos e sem dependências externas de runtime) e os conjuntos canônicos certificados para o **Teorema das Quatro Cores (4CT)**, reduzindo o conjunto inevitável histórico de **633 configurações (RSST 1997 / Gonthier Coq 2005)** para o recorde absoluto de **137 configurações** (**-78,36%** de redução líquida, 496 configurações eliminadas).
+Este repositório contém a implementação completa em **Rust puro** (com zero alocações em caminhos críticos e sem dependências externas de runtime) e os conjuntos canônicos certificados para o **Teorema das Quatro Cores (4CT)**, reduzindo o conjunto inevitável histórico de **633 configurações (RSST 1997 / Gonthier Coq 2005)** para o recorde absoluto de **41 configurações** (**-93,52%** de redução líquida, 592 configurações eliminadas).
 
 ---
 
@@ -18,7 +18,8 @@ Este repositório contém a implementação completa em **Rust puro** (com zero 
 | **Podas Topológicas de 2ª Ordem** | 243 | -390 confs (-61,6%) | 243/243 redutíveis | 100% verificado |
 | **Otimização Global e Poda Exaustiva** | 177 | -456 confs (-72,0%) | 177/177 redutíveis | 100% verificado |
 | **Fronteira Sub-150: Síntese $k=4$ sob Stromquist** | 149 | -484 confs (-76,46%) | 149/149 redutíveis (22 D, 127 C) | 100% verificado |
-| 🚀 **Fronteira Sub-140: Podas de 4ª Ordem Profunda** | **137** | **-496 confs (-78,36%)** | **137/137 redutíveis** (20 D, 117 C) | **100% verificado (todas as 5)** |
+| **Fronteira Sub-140: Podas de 4ª Ordem Profunda** | 137 | -496 confs (-78,36%) | 137/137 redutíveis (20 D, 117 C) | 100% verificado |
+| 🚀 **Fronteira Sub-50: Mutações Planares (Diagonal Flips)** | **41** | **-592 confs (-93,52%)** | **41/41 redutíveis** (2 D, 39 C) | **100% verificado (todas as 5)** |
 
 ---
 
@@ -42,19 +43,19 @@ Este repositório contém a implementação completa em **Rust puro** (com zero 
 * Compilador **Rust** (`cargo`, `rustc` $\ge 1.70$)
 * Compilador **C** (`gcc` ou `clang`)
 
-### 2. Certificação Completa do Recorde Mundial (137 Configurações)
+### 2. Certificação Completa do Recorde Mundial (41 Configurações)
 Para rodar a dupla certificação formal (RSST `discharge` em C + Verificador Algébrico em Rust) com um único comando:
 
 ```bash
-cd 06_pesquisa_podas_4a_ordem_sub140
-./verify_137.sh
+cd 07_pesquisa_flips_sub130
+./verify_41.sh
 ```
 
 *Saída esperada:*
 ```text
 ================================================================================
-    VERIFICAÇÃO FORMAL DO NOVO RECORDE MUNDIAL: 137 CONFIGURAÇÕES               
-    Fronteira Sub-140: Podas de 4ª Ordem sob o Lema de Stromquist (1975)        
+    VERIFICAÇÃO FORMAL DO NOVO RECORDE MUNDIAL: 41 CONFIGURAÇÕES                
+    Fronteira Sub-50: Mutações Planares (Diagonal Flips) + Síntese Algébrica    
 ================================================================================
 1. Executando Verificador Oficial RSST (discharge) com Reconhecedor Universal...
   -> Verificando present7... OK (present7 verified.)
@@ -64,12 +65,12 @@ cd 06_pesquisa_podas_4a_ordem_sub140
   -> Verificando present11... OK (present11 verified.)
 
 2. Executando Verificador Algébrico em Rust Puro...
-Carregadas 137 configurações. Verificando 137 em paralelo...
-Concluído! Total Redutíveis: 137/137 (D: 20, C: 117) em ~91s
+Carregadas 41 configurações. Verificando 41 em paralelo...
+Concluído! Total Redutíveis: 41/41 (D: 2, C: 39) em ~19s
 
 ================================================================================
- CERTIFICAÇÃO CONCLUÍDA: 137/137 CONFIGURAÇÕES 100% VÁLIDAS E INEVITÁVEIS!      
- Redução vs RSST 633: -496 (-78.4%) | Redução vs Recorde 149: -12 (-8.1%)       
+ CERTIFICAÇÃO CONCLUÍDA: 41/41 CONFIGURAÇÕES 100% VÁLIDAS E INEVITÁVEIS!        
+ Redução vs RSST 633: -592 (-93.52%) | Redução vs Recorde 137: -96 (-70.07%)   
 ================================================================================
 ```
 

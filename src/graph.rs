@@ -130,6 +130,7 @@ pub fn read_configurations<P: AsRef<Path>>(path: P) -> io::Result<Vec<Configurat
         }
 
         // Adjacency for v in 1..=verts
+        let mut vertices_read = 0;
         for _ in 1..=verts {
             let adj_line = match lines.next() {
                 Some(l) => l?,
@@ -149,7 +150,12 @@ pub fn read_configurations<P: AsRef<Path>>(path: P) -> io::Result<Vec<Configurat
                     }
                 }
                 conf.set_vertex(v, &nbs);
+                vertices_read += 1;
             }
+        }
+
+        if vertices_read < verts {
+            break;
         }
 
         // Coordinates: skip all lines until we reach an empty line or EOF

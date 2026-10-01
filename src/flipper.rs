@@ -81,6 +81,46 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
                 continue;
             }
 
+            // Verify u and v are consecutive in w's cyclic list
+            let deg_w = conf.mat[w][0];
+            let mut pos_u_in_w = None;
+            let mut pos_v_in_w = None;
+            for idx in 1..=deg_w {
+                if conf.mat[w][idx] == u {
+                    pos_u_in_w = Some(idx - 1);
+                }
+                if conf.mat[w][idx] == v {
+                    pos_v_in_w = Some(idx - 1);
+                }
+            }
+            let (pu_w, pv_w) = match (pos_u_in_w, pos_v_in_w) {
+                (Some(a), Some(b)) => (a.min(b), a.max(b)),
+                _ => continue,
+            };
+            if !(pv_w == pu_w + 1 || (pu_w == 0 && pv_w == deg_w - 1)) {
+                continue;
+            }
+
+            // Verify u and v are consecutive in z's cyclic list
+            let deg_z = conf.mat[z][0];
+            let mut pos_u_in_z = None;
+            let mut pos_v_in_z = None;
+            for idx in 1..=deg_z {
+                if conf.mat[z][idx] == u {
+                    pos_u_in_z = Some(idx - 1);
+                }
+                if conf.mat[z][idx] == v {
+                    pos_v_in_z = Some(idx - 1);
+                }
+            }
+            let (pu_z, pv_z) = match (pos_u_in_z, pos_v_in_z) {
+                (Some(a), Some(b)) => (a.min(b), a.max(b)),
+                _ => continue,
+            };
+            if !(pv_z == pu_z + 1 || (pu_z == 0 && pv_z == deg_z - 1)) {
+                continue;
+            }
+
             // Construct new configuration with updated cyclic orders
             let mut new_conf = Configuration::new(9999, verts, ring, 0);
 
@@ -114,24 +154,24 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
                     }
                     nbs_len = new_nbs_len;
                 } else if i == w {
-                    // Insert z between u and v (or v and u)
-                    // Insert z right next to u or v where they meet
-                    if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
-                        if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
-                            let insert_pos = pos_u.max(pos_v);
-                            nbs[insert_pos..nbs_len+1].rotate_right(1);
-                            nbs[insert_pos] = z;
-                            nbs_len += 1;
-                        }
+                    if pv_w == pu_w + 1 {
+                        nbs[pv_w..nbs_len + 1].rotate_right(1);
+                        nbs[pv_w] = z;
+                        nbs_len += 1;
+                    } else {
+                        // Wrap-around case
+                        nbs[nbs_len] = z;
+                        nbs_len += 1;
                     }
                 } else if i == z {
-                    if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
-                        if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
-                            let insert_pos = pos_u.max(pos_v);
-                            nbs[insert_pos..nbs_len+1].rotate_right(1);
-                            nbs[insert_pos] = w;
-                            nbs_len += 1;
-                        }
+                    if pv_z == pu_z + 1 {
+                        nbs[pv_z..nbs_len + 1].rotate_right(1);
+                        nbs[pv_z] = w;
+                        nbs_len += 1;
+                    } else {
+                        // Wrap-around case
+                        nbs[nbs_len] = w;
+                        nbs_len += 1;
                     }
                 }
 
