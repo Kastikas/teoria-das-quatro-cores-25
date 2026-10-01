@@ -1,0 +1,54 @@
+\begin{thebibliography}{10}
+
+\bibitem{appel1977every1}
+Kenneth Appel and Wolfgang Haken.
+\newblock Every planar map is four colorable. part i: Discharging.
+\newblock {\em Illinois Journal of Mathematics}, 21(3):429--490, 1977.
+
+\bibitem{appel1977every2}
+Kenneth Appel, Wolfgang Haken, and John Koch.
+\newblock Every planar map is four colorable. part ii: Reducibility.
+\newblock {\em Illinois Journal of Mathematics}, 21(3):491--567, 1977.
+
+\bibitem{birkhoff1913reducibility}
+George~D Birkhoff.
+\newblock The reducibility of maps.
+\newblock {\em American Journal of Mathematics}, 35(2):115--128, 1913.
+
+\bibitem{gonthier2008formal}
+Georges Gonthier.
+\newblock Formal proof---the four-color theorem.
+\newblock {\em Notices of the AMS}, 55(11):1382--1393, 2008.
+
+\bibitem{heesch1969untersuchungen}
+Heinrich Heesch.
+\newblock {\em Untersuchungen zum Vierfarbenproblem}, volume~81.
+\newblock Bibliographisches Institut Mannheim, 1969.
+
+\bibitem{huangfu2018parallelizing}
+Qi~Huangfu and J~A~Julian Hall.
+\newblock Parallelizing the dual revised simplex method.
+\newblock {\em Mathematical Programming Computation}, 10(1):119--142, 2018.
+
+\bibitem{kempe1879geographical}
+Alfred~Bray Kempe.
+\newblock How to colour a map with four colours.
+\newblock {\em Nature}, 21(538):399--400, 1879.
+
+\bibitem{robertson1997four}
+Neil Robertson, Daniel~P Sanders, Paul Seymour, and Robin Thomas.
+\newblock The four-colour theorem.
+\newblock {\em Journal of Combinatorial Theory, Series B}, 70(1):2--44, 1997.
+
+\bibitem{stromquist1975some}
+Walter Stromquist.
+\newblock Some results on reducible configurations in the four-color problem.
+\newblock {\em Doctoral Dissertation, Harvard University}, 1975.
+
+\bibitem{tutte1963how}
+William~T Tutte.
+\newblock How to draw a graph.
+\newblock {\em Proceedings of the London Mathematical Society}, 3(1):743--767,
+  1963.
+
+\end{thebibliography}
