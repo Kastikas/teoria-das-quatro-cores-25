@@ -705,7 +705,8 @@ fn main() {
                                 let mut clean_conf = conf.clone();
                                 clean_conf.contract_edges.clear();
                                 let angles = find_angles(&clean_conf);
-                                let (live, nlive) = eng.compute_consistent_live(&clean_conf, &angles);
+                                let (live, nlive) =
+                                    eng.compute_consistent_live(&clean_conf, &angles);
                                 if nlive == 0 {
                                     local_res.push(clean_conf);
                                     continue;
@@ -956,14 +957,25 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "generate-flips" {
-        let in_path = if args.len() > 2 { &args[2] } else { "unavoidable.conf" };
-        let out_path = if args.len() > 3 { &args[3] } else { "candidates_flips.conf" };
+        let in_path = if args.len() > 2 {
+            &args[2]
+        } else {
+            "unavoidable.conf"
+        };
+        let out_path = if args.len() > 3 {
+            &args[3]
+        } else {
+            "candidates_flips.conf"
+        };
         let filter_path = if args.len() > 4 { Some(&args[4]) } else { None };
 
         let mut seen = std::collections::HashSet::new();
 
         if let Some(fp) = filter_path {
-            println!("Carregando configurações existentes de {} para filtragem de duplicatas...", fp);
+            println!(
+                "Carregando configurações existentes de {} para filtragem de duplicatas...",
+                fp
+            );
             if let Ok(pool_confs) = read_configurations(fp) {
                 for c in &pool_confs {
                     seen.insert(canonical_edge_signature(c));
@@ -972,7 +984,10 @@ fn main() {
             }
         }
 
-        println!("Carregando configurações base de {} para mutações planares...", in_path);
+        println!(
+            "Carregando configurações base de {} para mutações planares...",
+            in_path
+        );
         match read_configurations(in_path) {
             Ok(configs) => {
                 let mut out_file = File::create(out_path).expect("Erro ao criar arquivo de saída");
@@ -989,7 +1004,14 @@ fn main() {
                         let sig = canonical_edge_signature(&f.conf);
                         if seen.insert(sig) {
                             let mut flipped_conf = f.conf;
-                            flipped_conf.name = format!("{}_f{}_{}_{}_{}", conf.name, f.flipped_edge.0, f.flipped_edge.1, f.new_edge.0, f.new_edge.1);
+                            flipped_conf.name = format!(
+                                "{}_f{}_{}_{}_{}",
+                                conf.name,
+                                f.flipped_edge.0,
+                                f.flipped_edge.1,
+                                f.new_edge.0,
+                                f.new_edge.1
+                            );
                             flipped_conf.contract_edges.clear();
                             let text = format_configuration(&flipped_conf);
                             out_file.write_all(text.as_bytes()).unwrap();
@@ -999,7 +1021,10 @@ fn main() {
                 }
 
                 println!("Concluído! Total de mutações geradas: {}", generated_count);
-                println!("Mutações inéditas e únicas adicionadas: {} salvas em {}", unique_count, out_path);
+                println!(
+                    "Mutações inéditas e únicas adicionadas: {} salvas em {}",
+                    unique_count, out_path
+                );
             }
             Err(e) => eprintln!("Erro ao ler {}: {}", in_path, e),
         }
@@ -1007,14 +1032,25 @@ fn main() {
     }
 
     if args.len() > 1 && args[1] == "generate-2flips" {
-        let in_path = if args.len() > 2 { &args[2] } else { "unavoidable.conf" };
-        let out_path = if args.len() > 3 { &args[3] } else { "candidates_2flips.conf" };
+        let in_path = if args.len() > 2 {
+            &args[2]
+        } else {
+            "unavoidable.conf"
+        };
+        let out_path = if args.len() > 3 {
+            &args[3]
+        } else {
+            "candidates_2flips.conf"
+        };
         let filter_path = if args.len() > 4 { Some(&args[4]) } else { None };
 
         let mut seen = std::collections::HashSet::new();
 
         if let Some(fp) = filter_path {
-            println!("Carregando configurações existentes de {} para filtragem de duplicatas...", fp);
+            println!(
+                "Carregando configurações existentes de {} para filtragem de duplicatas...",
+                fp
+            );
             if let Ok(pool_confs) = read_configurations(fp) {
                 for c in &pool_confs {
                     seen.insert(canonical_edge_signature(c));
@@ -1023,7 +1059,10 @@ fn main() {
             }
         }
 
-        println!("Carregando configurações base de {} para mutações de 2-flips (d=2)...", in_path);
+        println!(
+            "Carregando configurações base de {} para mutações de 2-flips (d=2)...",
+            in_path
+        );
         match read_configurations(in_path) {
             Ok(configs) => {
                 let mut out_file = File::create(out_path).expect("Erro ao criar arquivo de saída");
@@ -1043,7 +1082,14 @@ fn main() {
                             let sig = canonical_edge_signature(&f2.conf);
                             if seen.insert(sig) {
                                 let mut flipped_conf = f2.conf;
-                                flipped_conf.name = format!("{}_2f_{}_{}_{}_{}", conf.name, f1.flipped_edge.0, f1.flipped_edge.1, f2.flipped_edge.0, f2.flipped_edge.1);
+                                flipped_conf.name = format!(
+                                    "{}_2f_{}_{}_{}_{}",
+                                    conf.name,
+                                    f1.flipped_edge.0,
+                                    f1.flipped_edge.1,
+                                    f2.flipped_edge.0,
+                                    f2.flipped_edge.1
+                                );
                                 flipped_conf.contract_edges.clear();
                                 let text = format_configuration(&flipped_conf);
                                 out_file.write_all(text.as_bytes()).unwrap();
@@ -1053,8 +1099,14 @@ fn main() {
                     }
                 }
 
-                println!("Concluído! Total de mutações de 2-flips geradas: {}", generated_count);
-                println!("Mutações inéditas e únicas adicionadas: {} salvas em {}", unique_count, out_path);
+                println!(
+                    "Concluído! Total de mutações de 2-flips geradas: {}",
+                    generated_count
+                );
+                println!(
+                    "Mutações inéditas e únicas adicionadas: {} salvas em {}",
+                    unique_count, out_path
+                );
             }
             Err(e) => eprintln!("Erro ao ler {}: {}", in_path, e),
         }
