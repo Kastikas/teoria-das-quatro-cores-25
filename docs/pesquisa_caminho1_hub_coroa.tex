@@ -91,7 +91,7 @@ A curvatura total da esfera é invariante e positiva: $\sum_{v \in V} K(v) = +12
 \label{eq:v5_exact}
 \end{equation}
 
-\subsection{A Lei das Arestas Externas na Roda $W_d$}
+\subsection{A Lei das Arestas Externas na Roda \texorpdfstring{$W_d$}{Wd}}
 
 Seja $v_0$ um hub de grau $d \in \{7, \dots, 11\}$. Seus $d$ vizinhos imediatos formam um ciclo simples ordenado:
 \begin{equation}
@@ -117,7 +117,7 @@ Disso decorre:
     \item Se $\deg(w_i) = 7$, então $e_{\text{ext}}(w_i) = 4$.
 \end{itemize}
 
-\subsection{Teorema da Relação Anular ($C_d \to R_2$)}
+\subsection{Teorema da Relação Anular \texorpdfstring{($C_d \to R_2$)}{(Cd -> R2)}}
 
 \begin{theorem}[Comprimento do Segundo Anel]
 Seja $R_2$ o ciclo de vértices a distância 2 de $v_0$ que circunda a roda $W_d$. Se a região anular entre $C_d$ e $R_2$ é triangulada, o comprimento $|R_2|$ satisfaz a identidade exata:
@@ -206,11 +206,12 @@ o que gera uma contradição flagrante ($12 \le 0$). Logo, existe obrigatoriamen
 
 A Tabela~\ref{tab:limiares} confronta o limiar analítico deduzido no Lema 1 com a contagem empírica de vértices de grau 5 ao redor dos hubs nas 25 configurações do catálogo recorde mundial:
 
-\begin{table}[h!]
+\begin{table}[htbp]
 \centering
-\begin{tabular}{c c c l}
+\small
+\begin{tabular}{c c c p{7.0cm}}
 \toprule
-\textbf{Grau do Hub ($d$)} & \textbf{Déficit ($d - 6$)} & \textbf{Limiar Teórico $m(d)$} & \textbf{Observado nos 25 Grafos do Catálogo} \\
+\textbf{Grau Hub ($d$)} & \textbf{Déficit ($d - 6$)} & \textbf{Limiar $m(d)$} & \textbf{Observado nos 25 Grafos do Catálogo} \\
 \midrule
 7  & 1 & $n_5 \ge 2$ a $3$ & Confs \#2, \#8, \#9: possuem 2 a 3 vizinhos grau 5 \\
 8  & 2 & $n_5 \ge 3$ a $4$ & Confs \#6, \#10, \#21: possuem 3 a 4 vizinhos grau 5 \\
@@ -275,7 +276,7 @@ As arestas triangulares incidentes a $w_i$ são:
 \begin{equation}
 (w_i, v_0, w_{i-1}), \quad (w_i, w_{i-1}, u_{i-1}), \quad (w_i, u_{i-1}, u_i), \quad (w_i, u_i, w_{i+1}), \quad (w_i, w_{i+1}, v_0).
 \end{equation}
-O triângulo central externo $(w_i, u_{i-1}, u_i)$ exige imperativamente a existência da aresta $(u_{i-1}, u_i) \in E(R_2)$. 
+A face triangular externa $(w_i, u_{i-1}, u_i)$ exige imperativamente que a aresta $(u_{i-1}, u_i)$ pertença a $E(R_2)$. 
 Portanto, a aresta em $R_2$ é criada por necessidade geométrica de triangulação planar. Repetindo esse argumento para todos os $p-2$ vértices internos, a sequência de vértices em $R_2$ é forçada a formar um caminho zíper simples $(u_1, u_2, \dots, u_{p-1})$, provando a rigidez unívoca da subtopologia.
 \end{proof}
 
@@ -296,7 +297,7 @@ Um vértice de grau 6 na coroa $C_d$ atua como uma dobradiça (\emph{fan pivot})
 \end{itemize}
 \end{proposition}
 
-\subsection{Morfologias Induzidas em $B_2(v_0)$ e os 25 Grafos Canônicos}
+\subsection{Morfologias Induzidas em \texorpdfstring{$B_2(v_0)$}{B2(v0)} e os 25 Grafos Canônicos}
 
 A conjunção do Lema 1 com o Teorema do Zíper Rígido (Lema 2) produz uma restrição combinatorial determinante:
 
@@ -310,13 +311,13 @@ Como o número de vizinhos de grau 5 satisfaz $n_5 \ge m(d)$, o número de parti
 \end{itemize}
 \end{theorem}
 
-\section{Lema 3: Admissibilidade Algébrica da Contração com $k \le 2$ e Anulação de Kempe}
+\section{Lema 3: Admissibilidade Algébrica da Contração com \texorpdfstring{$k \le 2$}{k <= 2} e Anulação de Kempe}
 
 Os Lemas 1 e 2 estabeleceram que todo contraexemplo minimal ao Teorema das Quatro Cores contém obrigatoriamente um hub super-aquecido $v_0$ envolvido por blocos rígidos de zíperes de grau 5. 
 
 Resta demonstrar o elo final da cadeia dedutiva: \emph{Por que qualquer subgrafo que contenha essa morfologia de zíper rígido é obrigatoriamente redutível, e por que a profundidade de contração necessária satisfaz estritamente $k \le 2$?}
 
-\subsection{A Álgebra de Colorações sobre o Grupo de Klein $V_4$}
+\subsection{A Álgebra de Colorações sobre o Grupo de Klein \texorpdfstring{$V_4$}{V4}}
 
 Seja $G$ uma triangulação planar. Pelo teorema clássico de Tait (1880)~\cite{tait1880remarks}, a 4-coloração dos vértices de $G$ é equivalente à 3-coloração de arestas do grafo dual cúbico $G^*$, onde as três cores não-nulas pertencem ao grupo de Klein:
 \begin{equation}
@@ -327,7 +328,7 @@ A condição de coloração própria em $G$ traduz-se na lei de conservação de
 \sum_{e \sim v^*} c(e) = 0 \in \mathbb{F}_2^2.
 \end{equation}
 
-Em um anel de fronteira de comprimento $R$, o espaço de colorações válidas $\mathcal{C}_R$ é parametrizado pelas partições não-cruzadas de Catalan $C_{R/2}$. Duas colorações de fronteira pertencem à mesma classe de equivalência de Kempe se podem ser transformadas uma na outra por uma sequência finita de trocas bicolores ao longo de componentes conexas induzidas por subgrupos de ordem 2 de $V_4$ (as cadeias de Kempe~\cite{kempe1879geographical}).
+Para um anel de comprimento $R$, o espaço de colorações de fronteira $\mathcal{C}_R$ é parametrizado pelas partições não-cruzadas de Catalan $C_{R/2}$. Duas colorações de fronteira pertencem à mesma classe de equivalência de Kempe se podem ser transformadas uma na outra por uma sequência finita de trocas bicolores ao longo de componentes conexas induzidas por subgrupos de ordem 2 de $V_4$ (as cadeias de Kempe~\cite{kempe1879geographical}).
 
 \begin{proposition}[Dimensão do Espaço de Obstruções de Kempe]
 Como o grupo de simetria de cores $V_4 \cong \mathbb{F}_2^2$ é um espaço vetorial de dimensão 2 sobre o corpo finito $\mathbb{F}_2$:
@@ -457,7 +458,7 @@ American Journal of Mathematics, vol.~35, no.~2, pp.~115--128, 1913.
 \bibitem{wagner1936bemerkungen}
 K.~Wagner,
 \emph{Bemerkungen zum Vierfarbenproblem},
-Jahresbericht der Deutschen Mathematiker-Vereinigung, vol.~46, pp.~26--32, 1936.
+Jahres\-bericht der Deutschen Mathe\-matiker-Vereinigung, vol.~46, pp.~26--32, 1936.
 
 \bibitem{heesch1969untersuchungen}
 H.~Heesch,
