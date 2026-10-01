@@ -34,7 +34,7 @@ Este repositório contém a implementação completa em **Rust puro** (com zero 
    * **C-redutibilidade:** Síntese de contratos esparsos de arestas no interior ($k \le 4$) sob o **Lema de Stromquist (1975)** e as condições de admissibilidade de Robertson et al. (1997), garantindo que todo grafo planar que contenha a configuração possa ser reduzido a um grafo estritamente menor 4-colorível.
 3. **Dupla Certificação Matemática Rigorosa:**
    * **Verificador RSST Oficial em C (`discharge`):** As 5 apresentações canônicas (`present7`, `present8`, `present9`, `present10` e `present11`) são 100% verificadas sobre as árvores completas de descarregamento.
-   * **Verificador Algébrico em Rust Puro (`quatro_cores`):** Todas as 149 configurações possuem redutibilidade provada de forma exata e determinística (zero falhas).
+   * **Verificador Algébrico em Rust Puro (`quatro_cores`):** Todas as 25 configurações possuem redutibilidade provada de forma exata e determinística em 508 ms (zero falhas).
 
 ---
 
