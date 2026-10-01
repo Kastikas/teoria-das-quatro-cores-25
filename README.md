@@ -81,6 +81,15 @@ cargo test
 cargo bench
 ```
 
+### 4. Verificação Formal Interativa no Lean 4
+Para compilar a biblioteca Lean 4 e validar todos os teoremas formais via micro-kernel lógico do Lean 4:
+
+```bash
+cd lean4_formalization
+lake build
+lake exe fourcolor25
+```
+
 ---
 
 ## 📁 Estrutura do Repositório
@@ -93,8 +102,9 @@ cargo bench
 * `06_pesquisa_podas_4a_ordem_sub140/`: Modelo de 137 configurações com podas de 4ª ordem.
 * `07_pesquisa_flips_sub130/`: Modelo de 41 configurações por mutações planares (1-flips) e catálogo em PDF.
 * `08_pesquisa_2flips/`: **Recorde Mundial Absoluto de 25 configurações** via 2-flips encadeados e script `verify_25.sh`.
+* `lean4_formalization/`: **Formalização pioneira em Lean 4** com tipos indutivos e teoremas provados por reflexão computacional.
 * `src/`: Motor algébrico de alto desempenho em Rust puro (redutibilidade, fusão de grafos, set cover e mutações).
 * `benches/`: Benchmarks estáveis com medição de microssegundos.
 * `data/`: Matrizes bipartidas de incidência de descarregamento e arquivos de cobertura.
 * `docs/`: Relatórios técnicos formais e documentos LaTeX.
-* `scripts/`: Scripts auxiliares de geração de relatórios e compilação de PDFs.
+* `scripts/`: Scripts auxiliares de geração de relatórios, catálogo PDF e exportadores formais.
