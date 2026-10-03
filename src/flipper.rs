@@ -154,24 +154,24 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
                     }
                     nbs_len = new_nbs_len;
                 } else if i == w {
-                    if pv_w == pu_w + 1 {
-                        nbs[pv_w..nbs_len + 1].rotate_right(1);
-                        nbs[pv_w] = z;
-                        nbs_len += 1;
-                    } else {
-                        // Wrap-around case
-                        nbs[nbs_len] = z;
-                        nbs_len += 1;
+                    // Insert z between u and v (or v and u)
+                    // Insert z right next to u or v where they meet
+                    if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
+                        if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
+                            let insert_pos = pos_u.max(pos_v);
+                            nbs[insert_pos..nbs_len + 1].rotate_right(1);
+                            nbs[insert_pos] = z;
+                            nbs_len += 1;
+                        }
                     }
                 } else if i == z {
-                    if pv_z == pu_z + 1 {
-                        nbs[pv_z..nbs_len + 1].rotate_right(1);
-                        nbs[pv_z] = w;
-                        nbs_len += 1;
-                    } else {
-                        // Wrap-around case
-                        nbs[nbs_len] = w;
-                        nbs_len += 1;
+                    if let Some(pos_u) = nbs[..nbs_len].iter().position(|&x| x == u) {
+                        if let Some(pos_v) = nbs[..nbs_len].iter().position(|&x| x == v) {
+                            let insert_pos = pos_u.max(pos_v);
+                            nbs[insert_pos..nbs_len + 1].rotate_right(1);
+                            nbs[insert_pos] = w;
+                            nbs_len += 1;
+                        }
                     }
                 }
 

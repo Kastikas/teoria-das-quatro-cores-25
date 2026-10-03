@@ -103,6 +103,27 @@ pub fn read_configurations<P: AsRef<Path>>(path: P) -> io::Result<Vec<Configurat
         }
         let verts = h_tokens[0];
         let ring = h_tokens[1];
+
+        // Security/Sentinel: Validate input to prevent out-of-bounds access and underflows
+        if verts >= VERTS || verts < 1 || ring > verts || 3 * (verts - 1) < ring {
+            eprintln!(
+                "Skipping invalid configuration '{}': Invalid verts/ring.",
+                name
+            );
+            // We must advance the lines iterator to consume the adjacency matrix before breaking/continuing
+
+            for peek_line in lines.by_ref() {
+                if let Ok(pl) = peek_line {
+                    if pl.trim().is_empty() {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            continue;
+        }
+
         let extent_claim = h_tokens[2];
         let max_cons = if h_tokens.len() >= 4 { h_tokens[3] } else { 0 };
         let mut conf = Configuration::new(id, verts, ring, extent_claim);
@@ -146,7 +167,10 @@ pub fn read_configurations<P: AsRef<Path>>(path: P) -> io::Result<Vec<Configurat
                 let mut nbs = Vec::new();
                 for i in 0..deg {
                     if 2 + i < a_tokens.len() {
-                        nbs.push(a_tokens[2 + i]);
+                        let nb = a_tokens[2 + i];
+                        if nb < VERTS {
+                            nbs.push(nb);
+                        }
                     }
                 }
                 conf.set_vertex(v, &nbs);
@@ -608,4 +632,49 @@ pub fn validate_sparse_contract(conf: &Configuration, angles: &Angles) -> Result
         return Err("Contract has no triad");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_invalid_config_does_not_panic() {
+        let mut file = std::fs::File::create("test_invalid_configs.conf").unwrap();
+        // Malformed config: verts = 50 (>= VERTS 32), which would cause panic
+        // Second one is ring > verts
+        // Third one is 3 * (verts - 1) < ring
+        let content = "bad1
+50 5 6 0
+ 0
+ 1 15 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+
+bad2
+5 6 6 0
+ 0
+
+bad3
+2 10 6 0
+ 0
+
+good1
+5 5 6 0
+ 0
+ 1 1 2
+ 2 0
+ 3 0
+ 4 0
+ 5 0
+
+";
+        write!(file, "{}", content).unwrap();
+
+        let configs = read_configurations("test_invalid_configs.conf").unwrap();
+        std::fs::remove_file("test_invalid_configs.conf").unwrap();
+
+        // Should only parse the good configuration
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].name, "good1");
+    }
 }
