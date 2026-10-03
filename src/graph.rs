@@ -446,6 +446,35 @@ pub struct Triangle {
     pub c: usize,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_triad_endpoints() {
+        let mut conf = Configuration::new(1, 10, 4, 0); // ring=4
+        conf.set_vertex(1, &[2, 5, 4]);
+        conf.set_vertex(2, &[3, 6, 5, 1]);
+        conf.set_vertex(3, &[4, 7, 6, 2]);
+        conf.set_vertex(4, &[1, 5, 7, 3]);
+
+        // v=5 has degree 5
+        conf.set_vertex(5, &[1, 2, 6, 8, 4]);
+        // v=6 has degree 6
+        conf.set_vertex(6, &[2, 3, 7, 9, 8, 5]);
+
+        let endpoints_deg5_invalid = [1, 2, 6, 4, 10, 11, 12, 13];
+        // For v=5 (degree 5): a = 4 (neighbors 1,2,6,4). is_neighbour=[false, true, true, false, true, false, true, false, false, ...].
+        // ep in endpoints: 1 (neighbour), 2 (neighbour), 6 (neighbour), 4 (neighbour), 10 (not neighbour!).
+        // So for v=5, it hits `ep < VERTS && !is_neighbour[ep]`, returns true.
+        assert!(validate_triad_endpoints(&conf, &endpoints_deg5_invalid));
+
+        let endpoints_deg6 = [2, 3, 7, 10, 11, 12, 13, 14];
+        // v=6 has degree 6 and neighbors 2,3,7 are in endpoints. a=3. Returns true since deg >= 6.
+        assert!(validate_triad_endpoints(&conf, &endpoints_deg6));
+    }
+}
+
 pub fn extract_triangles(conf: &Configuration, edgeno: &[[usize; VERTS]; VERTS]) -> Vec<Triangle> {
     let mut triangles = Vec::new();
     let ring = conf.ring();

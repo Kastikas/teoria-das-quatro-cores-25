@@ -27,7 +27,14 @@ pub fn synthesize_contract(
         return None;
     }
 
-    synthesize_contract_with_live(&clean_conf, engine, &base_angles, &live, nlive, max_contracts)
+    synthesize_contract_with_live(
+        &clean_conf,
+        engine,
+        &base_angles,
+        &live,
+        nlive,
+        max_contracts,
+    )
 }
 
 /// Synthesize C-reducing contracts reusing precomputed live coloring fixed-point.
@@ -48,7 +55,15 @@ pub fn synthesize_contract_with_live(
     // Build the list of available internal edges from angles.
     // In strip(), edges 1..=ring are ring edges. Edges (ring+1)..=base_angles.edges are internal edges.
     let total_edges = base_angles.edges;
-    let internal_edge_indices: Vec<usize> = ((ring + 1)..=total_edges).collect();
+    let mut internal_edge_indices = [0usize; EDGES + 1];
+    let mut num_internal_edges = 0;
+    for e in (ring + 1)..=total_edges {
+        if num_internal_edges <= EDGES {
+            internal_edge_indices[num_internal_edges] = e;
+            num_internal_edges += 1;
+        }
+    }
+    let internal_edge_indices = &internal_edge_indices[..num_internal_edges];
 
     // Map each internal edge index back to (u, v) vertex pair in O(V^2) via strip()
     let mut edgeno = [[0usize; VERTS]; VERTS];
@@ -86,7 +101,7 @@ pub fn synthesize_contract_with_live(
 
     // 1. Try single-edge contracts (1 edge)
     if max_contracts >= 1 {
-        for &e1 in &internal_edge_indices {
+        for &e1 in internal_edge_indices {
             let (u1, v1) = edge_to_verts[e1];
             if u1 == 0 {
                 continue;
@@ -267,8 +282,6 @@ struct PrecomputedConf {
 
 /// Identifies candidate pairs in an unavoidable set that are prime candidates for fusion
 pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandidatePair> {
-    let mut pairs = Vec::new();
-
     let precomputed: Vec<PrecomputedConf> = confs
         .iter()
         .map(|c| {
@@ -291,68 +304,92 @@ pub fn find_fusion_candidate_pairs(confs: &[Configuration]) -> Vec<FusionCandida
         })
         .collect();
 
-    for i in 0..confs.len() {
-        let c1 = &confs[i];
-        let p1 = &precomputed[i];
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
 
-        for j in (i + 1)..confs.len() {
-            let c2 = &confs[j];
-            let p2 = &precomputed[j];
+    let pairs = std::thread::scope(|s| {
+        let chunk_size = confs.len().div_ceil(num_threads).max(1);
+        let mut handles = Vec::new();
 
-            // Must share the same ring size
-            if p1.ring != p2.ring {
-                continue;
-            }
+        for (chunk_idx, _chunk) in confs.chunks(chunk_size).enumerate() {
+            let precomputed_ref = &precomputed;
+            let confs_ref = confs;
 
-            let shared_prefix = if !p1.prefix.is_empty() && p1.prefix == p2.prefix {
-                Some(p1.prefix.clone())
-            } else {
-                None
-            };
+            handles.push(s.spawn(move || {
+                let mut local_pairs = Vec::new();
+                let start_i = chunk_idx * chunk_size;
+                let end_i = (start_i + chunk_size).min(confs_ref.len());
 
-            // Case A: Same number of vertices, compare sorted interior degrees
-            if p1.verts == p2.verts {
-                let mut diff_count: usize = 0;
-                for d in 0..16 {
-                    let c_1 = p1.degree_counts[d];
-                    let c_2 = p2.degree_counts[d];
-                    if c_1 > c_2 {
-                        diff_count += (c_1 - c_2) as usize;
-                    } else {
-                        diff_count += (c_2 - c_1) as usize;
+                for i in start_i..end_i {
+                    let c1 = &confs_ref[i];
+                    let p1 = &precomputed_ref[i];
+
+                    for j in (i + 1)..confs_ref.len() {
+                        let c2 = &confs_ref[j];
+                        let p2 = &precomputed_ref[j];
+
+                        if p1.ring != p2.ring {
+                            continue;
+                        }
+
+                        let shared_prefix = if !p1.prefix.is_empty() && p1.prefix == p2.prefix {
+                            Some(p1.prefix.clone())
+                        } else {
+                            None
+                        };
+
+                        if p1.verts == p2.verts {
+                            let mut diff_count: usize = 0;
+                            for d in 0..16 {
+                                let c_1 = p1.degree_counts[d];
+                                let c_2 = p2.degree_counts[d];
+                                if c_1 > c_2 {
+                                    diff_count += (c_1 - c_2) as usize;
+                                } else {
+                                    diff_count += (c_2 - c_1) as usize;
+                                }
+                            }
+                            diff_count /= 2;
+
+                            if diff_count <= 2 || shared_prefix.is_some() {
+                                local_pairs.push(FusionCandidatePair {
+                                    idx1: i,
+                                    idx2: j,
+                                    name1: c1.name.clone(),
+                                    name2: c2.name.clone(),
+                                    ring: p1.ring,
+                                    verts: p1.verts,
+                                    degree_difference: diff_count,
+                                    shared_prefix,
+                                });
+                            }
+                        } else if (p1.verts as isize - p2.verts as isize).abs() == 1
+                            && shared_prefix.is_some()
+                        {
+                            local_pairs.push(FusionCandidatePair {
+                                idx1: i,
+                                idx2: j,
+                                name1: c1.name.clone(),
+                                name2: c2.name.clone(),
+                                ring: p1.ring,
+                                verts: p1.verts,
+                                degree_difference: 99,
+                                shared_prefix,
+                            });
+                        }
                     }
                 }
-                // Div by 2 because each mismatch changes one degree to another, affecting 2 counts
-                diff_count /= 2;
-
-                if diff_count <= 2 || shared_prefix.is_some() {
-                    pairs.push(FusionCandidatePair {
-                        idx1: i,
-                        idx2: j,
-                        name1: c1.name.clone(),
-                        name2: c2.name.clone(),
-                        ring: p1.ring,
-                        verts: p1.verts,
-                        degree_difference: diff_count,
-                        shared_prefix,
-                    });
-                }
-            } else if (p1.verts as isize - p2.verts as isize).abs() == 1 && shared_prefix.is_some()
-            {
-                // Case B: Vertices differ by 1 and belong to the exact same prefix family!
-                pairs.push(FusionCandidatePair {
-                    idx1: i,
-                    idx2: j,
-                    name1: c1.name.clone(),
-                    name2: c2.name.clone(),
-                    ring: p1.ring,
-                    verts: p1.verts,
-                    degree_difference: 99,
-                    shared_prefix,
-                });
-            }
+                local_pairs
+            }));
         }
-    }
+
+        let mut all_pairs = Vec::new();
+        for h in handles {
+            all_pairs.extend(h.join().unwrap());
+        }
+        all_pairs
+    });
 
     pairs
 }
@@ -524,8 +561,6 @@ pub struct FlipPair {
 }
 
 pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
-    let mut flip_pairs = Vec::new();
-
     // Max vertices is 32. 1-indexed, so max ID is 32.
     // We can map an edge (u, v) where u < v to a bit index: u * 64 + v.
     // Max bit index is 32 * 64 + 32 = 2080.
@@ -545,60 +580,84 @@ pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
         edge_bitsets.push(bitset);
     }
 
-    for i in 0..confs.len() {
-        let c1 = &confs[i];
-        for j in (i + 1)..confs.len() {
-            let c2 = &confs[j];
-            if c1.ring() != c2.ring() || c1.verts() != c2.verts() {
-                continue;
-            }
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
 
-            let b1 = &edge_bitsets[i];
-            let b2 = &edge_bitsets[j];
+    let flip_pairs = std::thread::scope(|s| {
+        let chunk_size = confs.len().div_ceil(num_threads).max(1);
+        let mut handles = Vec::new();
 
-            let mut diff_count = 0;
-            let mut diff1_edge = (0, 0);
-            let mut diff2_edge = (0, 0);
+        for (chunk_idx, _chunk) in confs.chunks(chunk_size).enumerate() {
+            let bitsets_ref = &edge_bitsets;
+            let confs_ref = confs;
 
-            for k in 0..33 {
-                let xor = b1[k] ^ b2[k];
-                if xor != 0 {
-                    let mut temp = xor;
-                    while temp != 0 {
-                        // find lowest set bit
-                        let bit_offset = temp.trailing_zeros() as usize;
-                        let bit_idx = k * 64 + bit_offset;
-                        let u = bit_idx / 64;
-                        let v = bit_idx % 64;
+            handles.push(s.spawn(move || {
+                let mut local_pairs = Vec::new();
+                let start_i = chunk_idx * chunk_size;
+                let end_i = (start_i + chunk_size).min(confs_ref.len());
 
-                        if (b1[k] & (1 << bit_offset)) != 0 {
-                            diff1_edge = (u, v);
-                        } else {
-                            diff2_edge = (u, v);
+                for i in start_i..end_i {
+                    let c1 = &confs_ref[i];
+                    for j in (i + 1)..confs_ref.len() {
+                        let c2 = &confs_ref[j];
+                        if c1.ring() != c2.ring() || c1.verts() != c2.verts() {
+                            continue;
                         }
 
-                        diff_count += 1;
-                        temp &= temp - 1; // clear lowest set bit
+                        let b1 = &bitsets_ref[i];
+                        let b2 = &bitsets_ref[j];
+
+                        let mut diff_count = 0;
+                        let mut diff1_edge = (0, 0);
+                        let mut diff2_edge = (0, 0);
+
+                        for k in 0..33 {
+                            let xor = b1[k] ^ b2[k];
+                            if xor != 0 {
+                                let mut temp = xor;
+                                while temp != 0 {
+                                    let bit_offset = temp.trailing_zeros() as usize;
+                                    let bit_idx = k * 64 + bit_offset;
+                                    let u = bit_idx / 64;
+                                    let v = bit_idx % 64;
+
+                                    if (b1[k] & (1 << bit_offset)) != 0 {
+                                        diff1_edge = (u, v);
+                                    } else {
+                                        diff2_edge = (u, v);
+                                    }
+
+                                    diff_count += 1;
+                                    temp &= temp - 1;
+                                }
+                            }
+                        }
+
+                        if diff_count == 2 && diff1_edge != (0, 0) && diff2_edge != (0, 0) {
+                            local_pairs.push(FlipPair {
+                                idx1: i,
+                                idx2: j,
+                                name1: c1.name.clone(),
+                                name2: c2.name.clone(),
+                                ring: c1.ring(),
+                                verts: c1.verts(),
+                                edge1: diff1_edge,
+                                edge2: diff2_edge,
+                            });
+                        }
                     }
                 }
-            }
-
-            // An exact flip pair means exactly one edge was added and one removed
-            // diff_count will be exactly 2 in this case.
-            if diff_count == 2 && diff1_edge != (0, 0) && diff2_edge != (0, 0) {
-                flip_pairs.push(FlipPair {
-                    idx1: i,
-                    idx2: j,
-                    name1: c1.name.clone(),
-                    name2: c2.name.clone(),
-                    ring: c1.ring(),
-                    verts: c1.verts(),
-                    edge1: diff1_edge,
-                    edge2: diff2_edge,
-                });
-            }
+                local_pairs
+            }));
         }
-    }
+
+        let mut all_pairs = Vec::new();
+        for h in handles {
+            all_pairs.extend(h.join().unwrap());
+        }
+        all_pairs
+    });
 
     flip_pairs
 }
@@ -710,7 +769,10 @@ mod tests {
         assert_eq!(flips.len(), 1);
         let flip = &flips[0];
 
-        assert!((flip.edge1 == (1, 3) && flip.edge2 == (2, 4)) || (flip.edge1 == (2, 4) && flip.edge2 == (1, 3)));
+        assert!(
+            (flip.edge1 == (1, 3) && flip.edge2 == (2, 4))
+                || (flip.edge1 == (2, 4) && flip.edge2 == (1, 3))
+        );
     }
 
     #[test]

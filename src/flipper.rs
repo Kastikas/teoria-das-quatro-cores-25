@@ -1,5 +1,4 @@
-use crate::graph::Configuration;
-use std::collections::HashSet;
+use crate::graph::{Configuration, VERTS};
 
 pub struct FlippedConfig {
     pub conf: Configuration,
@@ -12,11 +11,12 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
     let ring = conf.ring();
     let mut results = Vec::new();
 
-    let mut existing_edges = HashSet::new();
+    let mut existing_edges = [[false; VERTS + 1]; VERTS + 1];
     for u in 1..=verts {
         for h in 1..=conf.mat[u][0] {
             let v = conf.mat[u][h];
-            existing_edges.insert((u.min(v), u.max(v)));
+            existing_edges[u][v] = true;
+            existing_edges[v][u] = true;
         }
     }
 
@@ -64,7 +64,7 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
             }
 
             // Cannot flip if (w, z) is already an edge
-            if existing_edges.contains(&(w.min(z), w.max(z))) {
+            if existing_edges[w][z] {
                 continue;
             }
 

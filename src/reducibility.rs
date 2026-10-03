@@ -787,6 +787,18 @@ mod tests {
     }
 
     #[test]
+    fn test_invalid_contract_boundary_rejected() {
+        let mut conf = make_rsst_2_126();
+        // Edge (1, 2) is a boundary ring edge (ring=8), so it must be rejected!
+        conf.contract_edges = vec![(1, 2)];
+        let angles = find_angles(&conf);
+
+        // Validating sparse contract should result in an error for ring edges
+        let res = validate_sparse_contract(&conf, &angles);
+        assert!(res.is_err(), "Contracts containing ring edges must be mathematically rejected");
+    }
+
+    #[test]
     fn test_is_reducible() {
         let mut report = ReducibilityReport {
             total_colorings: 0,
