@@ -1,12 +1,12 @@
 cff-version: 1.2.0
-message: "If you use this software or the 149-configuration unavoidable set in your research, please cite it as below."
+message: "If you use this software or the 25-configuration unavoidable set in your research, please cite it as below."
 authors:
   - family-names: "Kastikas"
     given-names: "Ivan R."
     email: "ivan.r.kastikas@gmail.com"
-title: "Reduction of the Four Color Theorem Unavoidable Set to 149 Configurations"
-version: "1.0.0"
-date-released: 2026-09-29
+title: "A Minimal Unavoidable Set of 25 Configurations for the Four Color Theorem via Planar 2-Flips, Integer Programming, and Formal Verification in Lean 4"
+version: "2.0.0"
+date-released: 2026-10-01
 url: "https://github.com/Kastikas/teoria-das-quatro-cores-463"
 repository-code: "https://github.com/Kastikas/teoria-das-quatro-cores-463"
 keywords:

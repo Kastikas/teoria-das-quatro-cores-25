@@ -1,17 +1,16 @@
-# Pesquisa Avançada: Fronteira Sub-200 — Novo Recorde Mundial: 177 Configurações
+# Pesquisa: Fronteira Sub-200 — Conjunto de 177 Configurações
 
-> **Status:** Novo Recorde Mundial Absoluto de Compacidade do Teorema das Quatro Cores  
 > **Tamanho do Catálogo Inevitável:** **177 Configurações**  
 > **Redução vs RSST Canônico (633):** **-456 configurações (-72.0%)**  
-> **Redução vs Marco Anterior (243):** **-66 configurações (-27.2%)**  
-> **Redução vs Recorde Inicial (394):** **-217 configurações (-55.1%)**  
+> **Redução vs Etapa Anterior (243):** **-66 configurações (-27.2%)**  
+> **Redução vs Base Inicial (394):** **-217 configurações (-55.1%)**  
 > **Dupla Certificação:** 100% verificado no descarregamento RSST C (`present7`..`present11` com 0 déficit) e 100% provado redutível em Rust puro (`177/177` em 87.21s).
 
 ---
 
-## 1. O Rompimento da Barreira Histórica dos 200
+## 1. O Rompimento da Barreira dos 200
 
-Nesta rodada de pesquisa de fronteira, superamos o desafio de compatibilidade dos subgrafos induzidos do lema de cartwheel de Robertson-Seymour-Sanders-Thomas (`CheckIso`), viabilizando a ativação em massa de superconfigurações de ordem superior.
+Nesta rodada de pesquisa, superamos o desafio de compatibilidade dos subgrafos induzidos do lema de cartwheel de Robertson-Seymour-Sanders-Thomas (`CheckIso`), viabilizando a ativação em massa de superconfigurações de ordem superior.
 
 ### Principais Pilares da Metodologia:
 1. **Triagem Geométrica Paralela (`CheckIso`):**
@@ -30,10 +29,10 @@ Nesta rodada de pesquisa de fronteira, superamos o desafio de compatibilidade do
 
 ## 2. Como Reproduzir a Verificação Completa
 
-Para executar a verificação formal dupla do novo recorde de 177 configurações:
+Para executar a verificação formal dupla do conjunto de 177 configurações:
 
 ```bash
-cd 04_pesquisa_podas_3a_ordem_sub200
+cd 04_modelo_177_sub200_otimizacao_global
 ./verify_177.sh
 ```
 
@@ -44,6 +43,6 @@ cd 04_pesquisa_podas_3a_ordem_sub200
 | Modelo / Marco | Tamanho | Redução vs RSST (633) | Verificador C (`discharge`) | Verificador Rust |
 | :--- | :---: | :---: | :---: | :---: |
 | **RSST Canônico (1997 / Coq 2005)** | 633 | 0% | 5/5 apresentações | 633/633 |
-| **Recorde Compacto (Frente 1)** | 394 | -37.8% | 5/5 apresentações | 394/394 |
+| **Modelo Compacto (Frente 1)** | 394 | -37.8% | 5/5 apresentações | 394/394 |
 | **Modelo Podas de 2ª Ordem** | 243 | -61.6% | 5/5 apresentações | 243/243 |
-| **Novo Recorde Mundial (Sub-200)** | **177** | **-72.0%** | **5/5 apresentações** | **177/177** |
+| **Modelo Sub-200 (Frente 4)** | **177** | **-72.0%** | **5/5 apresentações** | **177/177** |

@@ -13,7 +13,6 @@ pub struct ContractSearchResult {
     pub maximal_consistent_subset: usize,
 }
 
-/// Synthesize C-reducing contracts for a configuration whose D-reducibility failed (nlive > 0).
 pub fn synthesize_contract(
     conf: &Configuration,
     engine: &ReducibilityEngine,
@@ -23,11 +22,26 @@ pub fn synthesize_contract(
     clean_conf.contract_edges.clear();
     let base_angles = find_angles(&clean_conf);
 
-    let ring = conf.ring();
     let (live, nlive) = engine.compute_consistent_live(&clean_conf, &base_angles);
-
     if nlive == 0 {
-        // Already D-reducible! No contract needed.
+        return None;
+    }
+
+    synthesize_contract_with_live(&clean_conf, engine, &base_angles, &live, nlive, max_contracts)
+}
+
+/// Synthesize C-reducing contracts reusing precomputed live coloring fixed-point.
+pub fn synthesize_contract_with_live(
+    conf: &Configuration,
+    engine: &ReducibilityEngine,
+    base_angles: &crate::graph::Angles,
+    live: &[u8],
+    nlive: usize,
+    max_contracts: usize,
+) -> Option<ContractSearchResult> {
+    let clean_conf = conf;
+    let ring = conf.ring();
+    if nlive == 0 {
         return None;
     }
 
@@ -512,20 +526,19 @@ pub struct FlipPair {
 pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
     let mut flip_pairs = Vec::new();
 
-    // Max vertices is 32. 1-indexed, so max ID is 32.
-    // We can map an edge (u, v) where u < v to a bit index: u * 64 + v.
-    // Max bit index is 32 * 64 + 32 = 2080.
-    // 2080 / 64 = 32.5 -> 33 u64s needed.
-
+    // Max vertices is 32. Instead of 33 u64s, we can encode undirected edges
+    // where u < v. The max index `(u - 1) * 32 + (v - 1)` is `31 * 32 + 31 = 1023`.
+    // 1023 / 64 = 15.9 -> 16 u64s needed.
     let mut edge_bitsets = Vec::with_capacity(confs.len());
     for conf in confs {
-        let mut bitset = [0u64; 33];
+        let mut bitset = [0u64; 16];
         for u in 1..=conf.verts() {
             for h in 1..=conf.mat[u][0] {
                 let v = conf.mat[u][h];
-                let (min_v, max_v) = (u.min(v), u.max(v));
-                let bit_idx = min_v * 64 + max_v;
-                bitset[bit_idx / 64] |= 1 << (bit_idx % 64);
+                if u < v {
+                    let bit_idx = (u - 1) * 32 + (v - 1);
+                    bitset[bit_idx / 64] |= 1 << (bit_idx % 64);
+                }
             }
         }
         edge_bitsets.push(bitset);
@@ -533,20 +546,37 @@ pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
 
     for i in 0..confs.len() {
         let c1 = &confs[i];
+        let b1 = &edge_bitsets[i];
+        let r1 = c1.ring();
+        let v1 = c1.verts();
+
         for j in (i + 1)..confs.len() {
             let c2 = &confs[j];
-            if c1.ring() != c2.ring() || c1.verts() != c2.verts() {
+            if r1 != c2.ring() || v1 != c2.verts() {
                 continue;
             }
 
-            let b1 = &edge_bitsets[i];
             let b2 = &edge_bitsets[j];
+
+            // Fast path: use popcnt to quickly check total differing bits
+            // We want exactly 2 different edges (1 added, 1 removed)
+            let mut diff_bits = 0;
+            for k in 0..16 {
+                let xor = b1[k] ^ b2[k];
+                if xor != 0 {
+                    diff_bits += xor.count_ones();
+                }
+            }
+
+            if diff_bits != 2 {
+                continue;
+            }
 
             let mut diff_count = 0;
             let mut diff1_edge = (0, 0);
             let mut diff2_edge = (0, 0);
 
-            for k in 0..33 {
+            for k in 0..16 {
                 let xor = b1[k] ^ b2[k];
                 if xor != 0 {
                     let mut temp = xor;
@@ -554,8 +584,8 @@ pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
                         // find lowest set bit
                         let bit_offset = temp.trailing_zeros() as usize;
                         let bit_idx = k * 64 + bit_offset;
-                        let u = bit_idx / 64;
-                        let v = bit_idx % 64;
+                        let u = (bit_idx / 32) + 1;
+                        let v = (bit_idx % 32) + 1;
 
                         if (b1[k] & (1 << bit_offset)) != 0 {
                             diff1_edge = (u, v);
@@ -577,8 +607,8 @@ pub fn find_exact_flip_pairs(confs: &[Configuration]) -> Vec<FlipPair> {
                     idx2: j,
                     name1: c1.name.clone(),
                     name2: c2.name.clone(),
-                    ring: c1.ring(),
-                    verts: c1.verts(),
+                    ring: r1,
+                    verts: v1,
                     edge1: diff1_edge,
                     edge2: diff2_edge,
                 });
