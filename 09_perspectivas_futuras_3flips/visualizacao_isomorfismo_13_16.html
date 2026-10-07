@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prova Visual do Isomorfismo Quiral: Configurações #13 e #16</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --accent: #58a6ff;
+    --accent-mirror: #f85149;
+    --gold: #f1e05a;
+    --green: #3fb950;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  h1, h2, h3 { color: #ffffff; margin-top: 0; }
+  .header {
+    text-align: center;
+    padding: 15px 0 25px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 25px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--accent);
+    margin-bottom: 12px;
+    border: 1px solid rgba(88, 166, 255, 0.3);
+  }
+  .callout {
+    background: rgba(56, 139, 253, 0.1);
+    border-left: 4px solid var(--accent);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  .status-box {
+    background: #161b22;
+    border: 2px solid var(--accent);
+    padding: 14px 20px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  }
+  .status-title {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #8b949e;
+    font-weight: 700;
+  }
+  .status-detail {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+  }
+  .status-highlight-tag {
+    background: rgba(241, 224, 90, 0.2);
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-weight: bold;
+  }
+  .status-fixed-tag {
+    background: rgba(88, 166, 255, 0.2);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-weight: bold;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 30px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  .svg-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #090d13;
+    border-radius: 8px;
+    padding: 15px;
+    border: 1px solid #21262d;
+  }
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .node {
+    cursor: pointer;
+  }
+  .node circle {
+    transition: stroke 0.15s, stroke-width 0.15s, filter 0.15s;
+  }
+  .node:hover circle {
+    filter: brightness(1.25);
+  }
+  /* Vertice fixado onde o mouse passou */
+  .node.source-fixed circle {
+    stroke: #58a6ff !important;
+    stroke-width: 4px !important;
+    filter: drop-shadow(0 0 6px #58a6ff);
+  }
+  /* Vertice correspondente no outro grafo que recebe o highlight */
+  .node.target-highlight circle {
+    stroke: #f1e05a !important;
+    stroke-width: 5px !important;
+    filter: drop-shadow(0 0 12px #f1e05a);
+  }
+  .edge {
+    stroke: #30363d;
+    stroke-width: 1.5;
+    transition: stroke 0.2s, stroke-width 0.2s;
+  }
+  .edge.ring {
+    stroke: #388bfd;
+    stroke-width: 2.5;
+  }
+  .edge.incident-target {
+    stroke: #d29922 !important;
+    stroke-width: 3.5px !important;
+    stroke-dasharray: 4,2;
+  }
+  .table-box {
+    margin-top: 25px;
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th, td {
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+  th {
+    background: #21262d;
+    color: #ffffff;
+    font-weight: 600;
+  }
+  tr.active-row {
+    background: rgba(88, 166, 255, 0.25) !important;
+    outline: 2px solid var(--gold);
+  }
+  tr:hover {
+    background: rgba(255,255,255,0.03);
+  }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin: 15px 0 25px;
+    font-size: 14px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .legend-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+  }
+  .info-bar {
+    background: #21262d;
+    padding: 10px 16px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    font-family: monospace;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="badge">PROVA VISUAL E TOPOLÓGICA</div>
+  <h1>Isomorfismo Quiral: Configuração #13 ≅ Reflexão(Configuração #16)</h1>
+  <p>Evidência matemática interativa com fixação contínua de seleção.</p>
+</div>
+
+<div class="callout">
+  <strong>Comportamento de Fixação Interativa:</strong> Ao passar o mouse sobre qualquer vértice, ele fica <strong>fixado</strong> como âncora e seu par simétrico no outro grafo recebe o <strong>destaque (highlight amarelo brilhante)</strong>. O estado permanece <strong>congelado e visível</strong> mesmo quando você tira o mouse, e <strong>só se altera quando você passa o mouse sobre outro vértice</strong>.
+</div>
+
+<div class="status-box" id="status-box">
+  <div>
+    <div class="status-title">Estado Atual da Bijeção de Isomorfismo</div>
+    <div class="status-detail" id="status-text">Carregando...</div>
+  </div>
+  <div id="status-badges"></div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background: #58a6ff;"></div> Anel de Bordo (R = 11)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #e6194b;"></div> Vértices Internos (V = 12..15)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: var(--accent-mirror);"></div> Eixo de Simetria Vertical (x = 0)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: var(--gold); border: 1px solid #ffffff;"></div> Vértice em Highlight no Outro Grafo</div>
+</div>
+
+<div class="grid">
+  <!-- Card Conf 13 -->
+  <div class="card">
+    <h2>Configuração #13</h2>
+    <div class="info-bar">
+      <span>Nome: <code>p_p_p_2.454806..._2f_5_13_7_14</code></span>
+      <span>V=15 | R=11 | E=31</span>
+    </div>
+    <div class="svg-container">
+      <svg id="svg13" viewBox="-180 -180 360 360" width="400" height="400"></svg>
+    </div>
+  </div>
+
+  <!-- Card Conf 16 -->
+  <div class="card">
+    <h2>Configuração #16 (Refletida)</h2>
+    <div class="info-bar">
+      <span>Nome: <code>p_p3_p2_p_439320..._2f_1_12_3_12</code></span>
+      <span>V=15 | R=11 | E=31</span>
+    </div>
+    <div class="svg-container">
+      <svg id="svg16" viewBox="-180 -180 360 360" width="400" height="400"></svg>
+    </div>
+  </div>
+</div>
+
+<div class="card table-box">
+  <h3>Tabela Rigorosa de Correspondência e Bijeção φ: V(G₁₃) → V(G₁₆)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Vértice em #13</th>
+        <th>Grau em #13</th>
+        <th>Coordenada (x, y) #13</th>
+        <th>Vértice Correspondente φ(v) em #16</th>
+        <th>Grau em #16</th>
+        <th>Coordenada (x, y) #16</th>
+        <th>Relação Geométrica</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr id="row-1">
+        <td><strong>v1</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(-0.986, -3.358)</code></td>
+        <td><strong style="color:var(--accent);">v11</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(0.986, -3.358)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-2">
+        <td><strong>v2</strong> (Anel (Bordo))</td>
+        <td>4</td>
+        <td><code>(-2.645, -2.292)</code></td>
+        <td><strong style="color:var(--accent);">v10</strong> (Anel (Bordo))</td>
+        <td>4</td>
+        <td><code>(2.645, -2.292)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-3">
+        <td><strong>v3</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(-3.464, -0.498)</code></td>
+        <td><strong style="color:var(--accent);">v9</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(3.464, -0.498)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-4">
+        <td><strong>v4</strong> (Anel (Bordo))</td>
+        <td>4</td>
+        <td><code>(-3.184, 1.454)</code></td>
+        <td><strong style="color:var(--accent);">v8</strong> (Anel (Bordo))</td>
+        <td>4</td>
+        <td><code>(3.184, 1.454)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-5">
+        <td><strong>v5</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(-1.892, 2.944)</code></td>
+        <td><strong style="color:var(--accent);">v7</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(1.892, 2.944)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-6">
+        <td><strong>v6</strong> (Anel (Bordo))</td>
+        <td>4</td>
+        <td><code>(0.000, 3.500)</code></td>
+        <td><strong style="color:var(--accent);">v6</strong> (Anel (Bordo))</td>
+        <td>4</td>
+        <td><code>(0.000, 3.500)</code></td>
+        <td style="color:var(--green);">Ponto Fixo no Espelho (x = 0)</td>
+      </tr>
+    
+      <tr id="row-7">
+        <td><strong>v7</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(1.892, 2.944)</code></td>
+        <td><strong style="color:var(--accent);">v5</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(-1.892, 2.944)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-8">
+        <td><strong>v8</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(3.184, 1.454)</code></td>
+        <td><strong style="color:var(--accent);">v4</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(-3.184, 1.454)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-9">
+        <td><strong>v9</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(3.464, -0.498)</code></td>
+        <td><strong style="color:var(--accent);">v3</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(-3.464, -0.498)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-10">
+        <td><strong>v10</strong> (Anel (Bordo))</td>
+        <td>5</td>
+        <td><code>(2.645, -2.292)</code></td>
+        <td><strong style="color:var(--accent);">v2</strong> (Anel (Bordo))</td>
+        <td>5</td>
+        <td><code>(-2.645, -2.292)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-11">
+        <td><strong>v11</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(0.986, -3.358)</code></td>
+        <td><strong style="color:var(--accent);">v1</strong> (Anel (Bordo))</td>
+        <td>3</td>
+        <td><code>(-0.986, -3.358)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-12">
+        <td><strong>v12</strong> (Interior)</td>
+        <td>6</td>
+        <td><code>(-0.412, -1.871)</code></td>
+        <td><strong style="color:var(--accent);">v15</strong> (Interior)</td>
+        <td>6</td>
+        <td><code>(0.412, -1.871)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-13">
+        <td><strong>v13</strong> (Interior)</td>
+        <td>5</td>
+        <td><code>(-2.029, -0.523)</code></td>
+        <td><strong style="color:var(--accent);">v14</strong> (Interior)</td>
+        <td>5</td>
+        <td><code>(2.029, -0.523)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-14">
+        <td><strong>v14</strong> (Interior)</td>
+        <td>7</td>
+        <td><code>(-0.440, 0.595)</code></td>
+        <td><strong style="color:var(--accent);">v12</strong> (Interior)</td>
+        <td>7</td>
+        <td><code>(0.440, 0.595)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+      <tr id="row-15">
+        <td><strong>v15</strong> (Interior)</td>
+        <td>6</td>
+        <td><code>(1.791, 0.950)</code></td>
+        <td><strong style="color:var(--accent);">v13</strong> (Interior)</td>
+        <td>6</td>
+        <td><code>(-1.791, 0.950)</code></td>
+        <td style="color:var(--green);">Reflexão Espelhada x₁₆ = -x₁₃</td>
+      </tr>
+    
+    </tbody>
+  </table>
+</div>
+
+<script>
+const phi = {"1": 11, "2": 10, "3": 9, "4": 8, "5": 7, "6": 6, "7": 5, "8": 4, "9": 3, "10": 2, "11": 1, "12": 15, "13": 14, "14": 12, "15": 13};
+const phi_inv = Object.fromEntries(Object.entries(phi).map(([k, v]) => [v, parseInt(k)]));
+const edges13 = [[1, 2], [1, 11], [1, 12], [2, 3], [2, 12], [2, 13], [3, 4], [3, 13], [4, 5], [4, 13], [4, 14], [5, 6], [5, 14], [6, 7], [6, 14], [6, 15], [7, 8], [7, 15], [8, 9], [8, 15], [9, 10], [9, 15], [10, 11], [10, 12], [10, 14], [10, 15], [11, 12], [12, 13], [12, 14], [13, 14], [14, 15]];
+const edges16 = [[1, 2], [1, 11], [1, 15], [2, 3], [2, 12], [2, 13], [2, 15], [3, 4], [3, 13], [4, 5], [4, 13], [5, 6], [5, 13], [6, 7], [6, 12], [6, 13], [7, 8], [7, 12], [8, 9], [8, 12], [8, 14], [9, 10], [9, 14], [10, 11], [10, 14], [10, 15], [11, 15], [12, 13], [12, 14], [12, 15], [14, 15]];
+const pos13 = {"1": [-0.986063948945004, -3.3582254076507407], "2": [-2.6451235102399044, -2.2920125688084974], "3": [-3.464375046583265, -0.4981019339564972], "4": [-3.1837119837408148, 1.4539525455066022], "5": [-1.8922428610945918, 2.944387364909134], "6": [2.143131898507868e-16, 3.5], "7": [1.8922428610945918, 2.944387364909134], "8": [3.1837119837408148, 1.4539525455066022], "9": [3.464375046583265, -0.4981019339564977], "10": [2.645123510239904, -2.292012568808498], "11": [0.9860639489450036, -3.3582254076507407], "12": [-0.41150144288208285, -1.8713926101513556], "13": [-2.0289534401230935, -0.5225723792332343], "14": [-0.4400552171694024, 0.5946926712435765], "15": [1.7908996974148623, 0.9504863464823861]};
+const pos16 = {"1": [-0.986063948945004, -3.3582254076507407], "2": [-2.6451235102399044, -2.2920125688084974], "3": [-3.464375046583265, -0.4981019339564972], "4": [-3.1837119837408148, 1.4539525455066022], "5": [-1.8922428610945918, 2.944387364909134], "6": [2.143131898507868e-16, 3.5], "7": [1.8922428610945918, 2.944387364909134], "8": [3.1837119837408148, 1.4539525455066022], "9": [3.464375046583265, -0.4981019339564977], "10": [2.645123510239904, -2.292012568808498], "11": [0.9860639489450036, -3.3582254076507407], "12": [0.44005521716940227, 0.5946926712435764], "13": [-1.7908996974148623, 0.9504863464823865], "14": [2.0289534401230935, -0.5225723792332346], "15": [0.4115014428820824, -1.871392610151356]};
+const deg13 = {"1": 3, "2": 4, "3": 3, "4": 4, "5": 3, "6": 4, "7": 3, "8": 3, "9": 3, "10": 5, "11": 3, "12": 6, "13": 5, "14": 7, "15": 6};
+const deg16 = {"1": 3, "2": 5, "3": 3, "4": 3, "5": 3, "6": 4, "7": 3, "8": 4, "9": 3, "10": 4, "11": 3, "12": 7, "13": 6, "14": 5, "15": 6};
+const colors = {"1": "#e6194b", "2": "#3cb44b", "3": "#ffe119", "4": "#4363d8", "5": "#f58231", "6": "#911eb4", "7": "#46f0f0", "8": "#f032e6", "9": "#bcf60c", "10": "#fabebe", "11": "#008080", "12": "#e6beff", "13": "#9a6324", "14": "#fffac8", "15": "#800000"};
+
+const SCALE = 45;
+
+function drawGraph(svgId, pos, edges, degrees, is16) {
+  const svg = document.getElementById(svgId);
+  
+  // Desenhar eixo de reflexao tracejado
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', 0);
+  line.setAttribute('y1', -170);
+  line.setAttribute('x2', 0);
+  line.setAttribute('y2', 170);
+  line.setAttribute('stroke', 'rgba(248, 81, 73, 0.35)');
+  line.setAttribute('stroke-dasharray', '4,4');
+  line.setAttribute('stroke-width', '1.5');
+  svg.appendChild(line);
+
+  // Arestas
+  edges.forEach(([u, v]) => {
+    const p1 = pos[u], p2 = pos[v];
+    const e = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    e.setAttribute('x1', p1[0] * SCALE);
+    e.setAttribute('y1', -p1[1] * SCALE);
+    e.setAttribute('x2', p2[0] * SCALE);
+    e.setAttribute('y2', -p2[1] * SCALE);
+    const isRing = (u <= 11 && v <= 11 && (Math.abs(u - v) === 1 || Math.abs(u - v) === 10));
+    e.setAttribute('class', `edge ${svgId}-edge-${u}-${v} ${svgId}-edge-${v}-${u} ${isRing ? 'ring' : ''}`);
+    svg.appendChild(e);
+  });
+
+  // Vertices
+  for (let v = 1; v <= 15; v++) {
+    const p = pos[v];
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', `node node-${v}`);
+    g.setAttribute('id', `${svgId}-node-${v}`);
+    g.setAttribute('transform', `translate(${p[0] * SCALE}, ${-p[1] * SCALE})`);
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('r', v > 11 ? 16 : 13);
+    const colKey = is16 ? phi_inv[v] : v;
+    circle.setAttribute('fill', colors[colKey]);
+    circle.setAttribute('stroke', '#ffffff');
+    circle.setAttribute('stroke-width', '1.5');
+    g.appendChild(circle);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('font-size', '10px');
+    text.setAttribute('font-weight', 'bold');
+    text.setAttribute('fill', '#ffffff');
+    text.textContent = `${v} (${degrees[v]})`;
+    g.appendChild(text);
+
+    // Eventos: Atualiza e FIXA quando o mouse entra ou clica.
+    // NAO TEM MOUSELEAVE (o estado fica fixado ate o mouse entrar em outro vertice!)
+    g.addEventListener('mouseenter', () => selectVertex(v, is16));
+    g.addEventListener('click', () => selectVertex(v, is16));
+
+    svg.appendChild(g);
+  }
+}
+
+// Funcao de selecao persistente
+function selectVertex(v, is16) {
+  // Limpar marcacoes anteriores
+  document.querySelectorAll('.node').forEach(n => {
+    n.classList.remove('source-fixed');
+    n.classList.remove('target-highlight');
+  });
+  document.querySelectorAll('.edge').forEach(e => e.classList.remove('incident-target'));
+  document.querySelectorAll('tr').forEach(r => r.classList.remove('active-row'));
+
+  let sourceSvg, targetSvg, sourceV, targetV, v13_key;
+  if (!is16) {
+    // Mouse no Grafo #13
+    sourceSvg = 'svg13';
+    targetSvg = 'svg16';
+    sourceV = v;
+    targetV = phi[v];
+    v13_key = v;
+  } else {
+    // Mouse no Grafo #16
+    sourceSvg = 'svg16';
+    targetSvg = 'svg13';
+    sourceV = v;
+    targetV = phi_inv[v];
+    v13_key = targetV;
+  }
+
+  // 1. Marcar vertice fonte (onde o mouse passou) como FIXADO
+  const sourceNode = document.getElementById(`${sourceSvg}-node-${sourceV}`);
+  if (sourceNode) sourceNode.classList.add('source-fixed');
+
+  // 2. Marcar vertice alvo no OUTRO grafo com HIGHLIGHT
+  const targetNode = document.getElementById(`${targetSvg}-node-${targetV}`);
+  if (targetNode) targetNode.classList.add('target-highlight');
+
+  // 3. Destacar arestas incidentes no grafo alvo
+  const targetEdges = (!is16) ? edges16 : edges13;
+  targetEdges.forEach(([u, w]) => {
+    if (u === targetV || w === targetV) {
+      const edgeEl = document.querySelector(`.${targetSvg}-edge-${u}-${w}`);
+      if (edgeEl) edgeEl.classList.add('incident-target');
+    }
+  });
+
+  // 4. Destacar linha na tabela
+  const row = document.getElementById(`row-${v13_key}`);
+  if (row) row.classList.add('active-row');
+
+  // 5. Atualizar banner de status
+  const sourceName = !is16 ? "Configuração #13" : "Configuração #16";
+  const targetName = !is16 ? "Configuração #16" : "Configuração #13";
+  const geomDesc = (v13_key === 6) ? "Ponto Fixo sobre o Espelho x = 0" : `Reflexão Bilateral x_${!is16 ? '16' : '13'} = -x_${!is16 ? '13' : '16'}`;
+
+  document.getElementById('status-text').innerHTML = 
+    `Vértice <span class="status-fixed-tag">v${sourceV}</span> em ${sourceName} ➔ Imagem em Highlight <span class="status-highlight-tag">v${targetV}</span> em ${targetName} (${geomDesc})`;
+  
+  document.getElementById('status-badges').innerHTML = 
+    `<span style="color:#8b949e; font-size:13px; font-family:monospace;">Grau: ${(!is16 ? deg13[sourceV] : deg16[sourceV])} ⟷ ${(!is16 ? deg16[targetV] : deg13[targetV])}</span>`;
+}
+
+drawGraph('svg13', pos13, edges13, deg13, false);
+drawGraph('svg16', pos16, edges16, deg16, true);
+
+// Inicializar fixado no vertice 6 (ponto fixo do espelho)
+selectVertex(6, false);
+</script>
+
+</body>
+</html>

@@ -7,7 +7,8 @@ pub struct FlippedConfig {
     pub new_edge: (usize, usize),
 }
 
-pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
+/// Generates all combinatorial internal diagonal flips without global RSST admissibility filtering.
+pub fn generate_raw_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
     let verts = conf.verts();
     let ring = conf.ring();
     let mut results = Vec::new();
@@ -189,6 +190,17 @@ pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
     results
 }
 
+/// Generates all valid internal diagonal flips that yield an RSST geometrically admissible planar configuration.
+///
+/// Applies the microsecond fast-fail geometric filter (RSST conditions 1-7 + radius <= 2)
+/// before any expensive downstream Kempe live-coloring calculations.
+pub fn generate_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
+    generate_raw_internal_flips(conf)
+        .into_iter()
+        .filter(|flip| flip.conf.is_geometrically_admissible())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,7 +233,7 @@ mod tests {
     #[test]
     fn test_valid_flip() {
         let conf = setup_valid_flip_config();
-        let flips = generate_internal_flips(&conf);
+        let flips = generate_raw_internal_flips(&conf);
 
         // We expect exactly 1 valid flip: (4, 5) to (1, 7) based on our mock data.
         assert_eq!(flips.len(), 1);
@@ -278,7 +290,7 @@ mod tests {
         conf.mat[7][0] = deg_7 + 1;
         conf.mat[7][deg_7 + 1] = 1;
 
-        let flips = generate_internal_flips(&conf);
+        let flips = generate_raw_internal_flips(&conf);
         // By adding an edge (1, 7), we might create new valid internal flips like (4, 7).
         // However, we want to check that flip (4, 5) with new edge (1, 7) is NOT in the list.
         let contains_4_5_flip = flips
@@ -300,7 +312,7 @@ mod tests {
         // Let's just set the length to 5 (drop 2).
         conf.mat[5][0] = 5;
 
-        let flips = generate_internal_flips(&conf);
+        let flips = generate_raw_internal_flips(&conf);
         assert!(
             flips.is_empty(),
             "Expected no flips since degree drops below 5"
@@ -318,7 +330,7 @@ mod tests {
         conf.mat[0][1] = 7; // Ring size is now 7.
                             // w=1 <= 7, z=7 <= 7. This should be rejected as a chord!
 
-        let flips = generate_internal_flips(&conf);
+        let flips = generate_raw_internal_flips(&conf);
         assert!(
             flips.is_empty(),
             "Expected no flips since it forms a chord between ring vertices"
@@ -339,7 +351,7 @@ mod tests {
         // Let's swap 7 and 6 in 5's list, so neighbors of 5 are: [1, 4, 6, 7, 8, 2]
         conf.set_vertex(5, &[1, 4, 6, 7, 8, 2]);
 
-        let flips = generate_internal_flips(&conf);
+        let flips = generate_raw_internal_flips(&conf);
         // We should not see flip (4, 5) in the list anymore
         let contains_4_5_flip = flips
             .iter()
@@ -348,5 +360,46 @@ mod tests {
             !contains_4_5_flip,
             "Expected flip (4, 5) to be rejected due to invalid planar triangulation face"
         );
+    }
+
+    fn setup_rsst_2_122() -> Configuration {
+        let mut conf = Configuration::new(2122, 11, 7, 0);
+        conf.set_vertex(1, &[2, 8, 11, 7]);
+        conf.set_vertex(2, &[3, 8, 1]);
+        conf.set_vertex(3, &[4, 9, 8, 2]);
+        conf.set_vertex(4, &[5, 9, 3]);
+        conf.set_vertex(5, &[6, 10, 9, 4]);
+        conf.set_vertex(6, &[7, 11, 10, 5]);
+        conf.set_vertex(7, &[1, 11, 6]);
+        conf.set_vertex(8, &[2, 3, 9, 10, 11, 1]);
+        conf.set_vertex(9, &[3, 4, 5, 10, 8]);
+        conf.set_vertex(10, &[9, 5, 6, 11, 8]);
+        conf.set_vertex(11, &[10, 6, 7, 1, 8]);
+        conf
+    }
+
+    #[test]
+    fn test_generate_internal_flips_rsst_admissible() {
+        let conf = setup_rsst_2_122();
+        assert!(conf.is_geometrically_admissible());
+
+        let raw_flips = generate_raw_internal_flips(&conf);
+        let admissible_flips = generate_internal_flips(&conf);
+
+        assert_eq!(admissible_flips.len(), 2);
+        assert_eq!(raw_flips.len(), 2);
+
+        for f in &admissible_flips {
+            assert!(f.conf.is_geometrically_admissible());
+            assert!(f.conf.check_rsst_admissibility().is_ok());
+        }
+
+        // Verify the 2 expected RSST twin flips
+        let flip_edges: Vec<((usize, usize), (usize, usize))> = admissible_flips
+            .iter()
+            .map(|f| (f.flipped_edge, f.new_edge))
+            .collect();
+        assert!(flip_edges.contains(&((1, 8), (2, 11))));
+        assert!(flip_edges.contains(&((3, 8), (9, 2))));
     }
 }

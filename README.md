@@ -20,7 +20,12 @@ Este repositório contém a implementação em **Rust puro** (com foco em desemp
 | **Fronteira Sub-150: Síntese $k=4$ sob Stromquist** | 149 | -484 confs (-76,46%) | 149/149 redutíveis (22 D, 127 C) | 100% verificado |
 | **Fronteira Sub-140: Podas de 4ª Ordem Profunda** | 137 | -496 confs (-78,36%) | 137/137 redutíveis (20 D, 117 C) | 100% verificado |
 | **Fronteira Sub-50: Mutações Planares (1-Flips)** | 41 | -592 confs (-93,52%) | 41/41 redutíveis (2 D, 39 C) | 100% verificado (todas as 5) |
-| **Fronteira Sub-30: Mutações Planares (2-Flips)** | **25** | **-608 confs (-96,05%)** | **25/25 redutíveis** (3 D, 22 C) | **100% verificado (todas as 5)** |
+| **Fronteira Sub-30: Mutações Planares (2-Flips)** | 25 | -608 confs (-96,05%) | 25/25 redutíveis (3 D, 22 C) | 100% verificado (todas as 5) |
+| **Recorde Mundial: 3-Flips + Diédrico Universal (Pasta 10)** | **21** | **-612 confs (-96,68%)** | **21/21 redutíveis** (2 D, 19 C) | **100% verificado (~1,89s, V_max=18)** |
+| **Fronteira Sub-15: Descarregamento Inverso (Pasta 11)** | **10** | **-623 confs (-98,42%)** | **10/10 redutíveis** (1 D, 9 C em 35ms) | **1.181/1.298 eixos (91% total, 100% no grau 11)** |
+
+> [!NOTE]
+> Para uma auditoria detalhada de todas as alterações algorítmicas, invariantes topológicos e argumentos de consistência formal, consulte a [**Declaração Metodológica Explícita**](file:///home/ivanlrk/Projetos/quatro-cores-mapa/DECLARACAO_METODOLOGICA.md).
 
 ---
 
@@ -102,7 +107,10 @@ lake exe fourcolor25
 * `06_pesquisa_podas_4a_ordem_sub140/`: Modelo de 137 configurações com podas de 4ª ordem.
 * `07_pesquisa_flips_sub130/`: Modelo de 41 configurações por mutações planares (1-flips).
 * `08_pesquisa_2flips/`: Conjunto de 25 configurações via 2-flips encadeados e script `verify_25.sh`.
-* `09_perspectivas_futuras_3flips/`: Diretrizes teóricas e blueprint para pesquisa futura de 3-flips e o limite assintótico de Euler.
+* `09_perspectivas_futuras_3flips/`: Diretrizes teóricas e blueprint para pesquisa de 3-flips e o verificador universal diédrico.
+* `10_recorde_21_configuracoes/`: **Recorde Mundial de 21 Configurações**, eliminação total dos monstros de 21 vértices e script `verify_21.sh`.
+* `11_descarregamento_inverso_sub15/`: **Fronteira Sub-15 de Descarregamento Inverso**, modelo de 10 configurações (91% dos eixos, 100% no grau 11) e profiler de eixos.
+* `DECLARACAO_METODOLOGICA.md`: Declaração explícita de auditoria e consistência formal da demonstração.
 * `lean4_formalization/`: Formalização em Lean 4 com tipos indutivos e teoremas provados por reflexão computacional.
 * `src/`: Motor algébrico de alto desempenho em Rust puro (redutibilidade, fusão de grafos, set cover e mutações).
 * `benches/`: Benchmarks estáveis com medição de microssegundos.

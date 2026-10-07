@@ -10,3 +10,4 @@ __pycache__/
 *.toc
 .lake/
 *.blg
+rsst_coverage.txt

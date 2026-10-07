@@ -50,18 +50,9 @@ fn format_configuration(conf: &Configuration) -> String {
 }
 
 fn canonical_edge_signature(conf: &Configuration) -> (usize, usize, Vec<(usize, usize)>) {
-    let mut edges = Vec::new();
-    for u in 1..=conf.verts() {
-        for h in 1..=conf.mat[u][0] {
-            let v = conf.mat[u][h];
-            if u < v {
-                edges.push((u, v));
-            }
-        }
-    }
-    edges.sort_unstable();
-    (conf.ring(), conf.verts(), edges)
+    graph::canonical_dihedral_signature(conf)
 }
+
 
 fn make_birkhoff_diamond() -> Configuration {
     let mut conf = Configuration::new(1, 10, 6, 16);
@@ -324,6 +315,9 @@ fn main() {
                             let mut local_d = 0;
                             let mut local_c = 0;
                             for conf in chunk {
+                                if !conf.is_geometrically_admissible() {
+                                    continue;
+                                }
                                 let angles = find_angles(conf);
                                 let report = eng.test_configuration(conf, &angles);
                                 match report.reduction_type {
@@ -702,6 +696,9 @@ fn main() {
                             let eng = ReducibilityEngine::new();
                             let mut local_res = Vec::new();
                             for conf in chunk {
+                                if !conf.is_geometrically_admissible() {
+                                    continue;
+                                }
                                 let mut clean_conf = conf.clone();
                                 clean_conf.contract_edges.clear();
                                 let angles = find_angles(&clean_conf);
@@ -1026,35 +1023,162 @@ fn main() {
         println!("Carregando configurações base de {} para mutações de 2-flips (d=2)...", in_path);
         match read_configurations(in_path) {
             Ok(configs) => {
-                let mut out_file = File::create(out_path).expect("Erro ao criar arquivo de saída");
-                let mut generated_count = 0;
-                let mut unique_count = 0;
+                let num_threads = std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4);
+                let chunk_size = configs.len().div_ceil(num_threads).max(1);
+
+                println!(
+                    "Carregadas {} configurações base. Gerando 2-flips em PARALELO ({} threads com deduplicação diédrica)...",
+                    configs.len(),
+                    num_threads
+                );
 
                 for conf in &configs {
                     seen.insert(canonical_edge_signature(conf));
+                }
 
-                    let flips1 = flipper::generate_internal_flips(conf);
-                    for f1 in &flips1 {
-                        seen.insert(canonical_edge_signature(&f1.conf));
-                        let flips2 = flipper::generate_internal_flips(&f1.conf);
-                        generated_count += flips2.len();
+                let thread_results: Vec<(usize, Vec<(Configuration, (usize, usize, Vec<(usize, usize)>))>)> = std::thread::scope(|s| {
+                    let mut handles = Vec::new();
+                    for chunk in configs.chunks(chunk_size) {
+                        handles.push(s.spawn(move || {
+                            let mut local_generated = 0;
+                            let mut local_candidates = Vec::new();
 
-                        for f2 in flips2 {
-                            let sig = canonical_edge_signature(&f2.conf);
-                            if seen.insert(sig) {
-                                let mut flipped_conf = f2.conf;
-                                flipped_conf.name = format!("{}_2f_{}_{}_{}_{}", conf.name, f1.flipped_edge.0, f1.flipped_edge.1, f2.flipped_edge.0, f2.flipped_edge.1);
-                                flipped_conf.contract_edges.clear();
-                                let text = format_configuration(&flipped_conf);
-                                out_file.write_all(text.as_bytes()).unwrap();
-                                unique_count += 1;
+                            for conf in chunk {
+                                let flips1 = flipper::generate_internal_flips(conf);
+                                for f1 in &flips1 {
+                                    let flips2 = flipper::generate_internal_flips(&f1.conf);
+                                    local_generated += flips2.len();
+
+                                    for f2 in flips2 {
+                                        let sig = canonical_edge_signature(&f2.conf);
+                                        let mut flipped_conf = f2.conf;
+                                        flipped_conf.name = format!("{}_2f_{}_{}_{}_{}", conf.name, f1.flipped_edge.0, f1.flipped_edge.1, f2.flipped_edge.0, f2.flipped_edge.1);
+                                        flipped_conf.contract_edges.clear();
+                                        local_candidates.push((flipped_conf, sig));
+                                    }
+                                }
                             }
+                            (local_generated, local_candidates)
+                        }));
+                    }
+
+                    handles.into_iter().map(|h| h.join().unwrap()).collect()
+                });
+
+                let mut out_file = File::create(out_path).expect("Erro ao criar arquivo de saída");
+                let mut total_generated = 0;
+                let mut unique_count = 0;
+
+                for (gen_count, candidates) in thread_results {
+                    total_generated += gen_count;
+                    for (conf, sig) in candidates {
+                        if seen.insert(sig) {
+                            let text = format_configuration(&conf);
+                            out_file.write_all(text.as_bytes()).unwrap();
+                            unique_count += 1;
                         }
                     }
                 }
 
-                println!("Concluído! Total de mutações de 2-flips geradas: {}", generated_count);
-                println!("Mutações inéditas e únicas adicionadas: {} salvas em {}", unique_count, out_path);
+                println!("Concluído! Total de mutações de 2-flips geradas: {}", total_generated);
+                println!("Mutações inéditas e únicas adicionadas (módulo grupo diédrico D_2R): {} salvas em {}", unique_count, out_path);
+            }
+            Err(e) => eprintln!("Erro ao ler {}: {}", in_path, e),
+        }
+        return;
+    }
+
+    if args.len() > 1 && args[1] == "generate-3flips" {
+        let in_path = if args.len() > 2 { &args[2] } else { "unavoidable.conf" };
+        let out_path = if args.len() > 3 { &args[3] } else { "candidates_3flips.conf" };
+        let filter_path = if args.len() > 4 { Some(&args[4]) } else { None };
+
+        let mut seen = std::collections::HashSet::new();
+
+        if let Some(fp) = filter_path {
+            println!("Carregando configurações existentes de {} para filtragem de duplicatas...", fp);
+            if let Ok(pool_confs) = read_configurations(fp) {
+                for c in &pool_confs {
+                    seen.insert(canonical_edge_signature(c));
+                }
+                println!("Carregadas {} assinaturas do pool existente.", seen.len());
+            }
+        }
+
+        println!("Carregando configurações base de {} para mutações de 3-flips (d=3)...", in_path);
+        match read_configurations(in_path) {
+            Ok(configs) => {
+                let num_threads = std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4);
+                let chunk_size = configs.len().div_ceil(num_threads).max(1);
+
+                println!(
+                    "Carregadas {} configurações base. Gerando 3-flips em PARALELO ({} threads com deduplicação diédrica D_2R e Fast-Fail RSST)...",
+                    configs.len(),
+                    num_threads
+                );
+
+                for conf in &configs {
+                    seen.insert(canonical_edge_signature(conf));
+                }
+
+                let thread_results: Vec<(usize, Vec<(Configuration, (usize, usize, Vec<(usize, usize)>))>)> = std::thread::scope(|s| {
+                    let mut handles = Vec::new();
+                    for chunk in configs.chunks(chunk_size) {
+                        handles.push(s.spawn(move || {
+                            let mut local_generated = 0;
+                            let mut local_candidates = Vec::new();
+
+                            for conf in chunk {
+                                let flips1 = flipper::generate_internal_flips(conf);
+                                for f1 in &flips1 {
+                                    let flips2 = flipper::generate_internal_flips(&f1.conf);
+                                    for f2 in &flips2 {
+                                        let flips3 = flipper::generate_internal_flips(&f2.conf);
+                                        local_generated += flips3.len();
+
+                                        for f3 in flips3 {
+                                            let sig = canonical_edge_signature(&f3.conf);
+                                            let mut flipped_conf = f3.conf;
+                                            flipped_conf.name = format!("{}_3f_{}_{}_{}_{}_{}_{}",
+                                                conf.name,
+                                                f1.flipped_edge.0, f1.flipped_edge.1,
+                                                f2.flipped_edge.0, f2.flipped_edge.1,
+                                                f3.flipped_edge.0, f3.flipped_edge.1
+                                            );
+                                            flipped_conf.contract_edges.clear();
+                                            local_candidates.push((flipped_conf, sig));
+                                        }
+                                    }
+                                }
+                            }
+                            (local_generated, local_candidates)
+                        }));
+                    }
+
+                    handles.into_iter().map(|h| h.join().unwrap()).collect()
+                });
+
+                let mut out_file = File::create(out_path).expect("Erro ao criar arquivo de saída");
+                let mut total_generated = 0;
+                let mut unique_count = 0;
+
+                for (gen_count, candidates) in thread_results {
+                    total_generated += gen_count;
+                    for (conf, sig) in candidates {
+                        if seen.insert(sig) {
+                            let text = format_configuration(&conf);
+                            out_file.write_all(text.as_bytes()).unwrap();
+                            unique_count += 1;
+                        }
+                    }
+                }
+
+                println!("Concluído! Total de mutações de 3-flips geradas: {}", total_generated);
+                println!("Mutações inéditas e únicas adicionadas (módulo grupo diédrico D_2R): {} salvas em {}", unique_count, out_path);
             }
             Err(e) => eprintln!("Erro ao ler {}: {}", in_path, e),
         }
@@ -1103,6 +1227,9 @@ fn main() {
                         let eng = ReducibilityEngine::new();
                         let mut local_found = Vec::new();
                         for flip in chunk {
+                            if !flip.conf.is_geometrically_admissible() {
+                                continue;
+                            }
                             let angles = find_angles(&flip.conf);
                             let report = eng.test_configuration(&flip.conf, &angles);
                             if report.is_d_reducible {

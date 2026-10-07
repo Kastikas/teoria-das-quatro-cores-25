@@ -18,6 +18,9 @@ pub fn synthesize_contract(
     engine: &ReducibilityEngine,
     max_contracts: usize,
 ) -> Option<ContractSearchResult> {
+    if !conf.is_geometrically_admissible() {
+        return None;
+    }
     let mut clean_conf = conf.clone();
     clean_conf.contract_edges.clear();
     let base_angles = find_angles(&clean_conf);
@@ -39,6 +42,9 @@ pub fn synthesize_contract_with_live(
     nlive: usize,
     max_contracts: usize,
 ) -> Option<ContractSearchResult> {
+    if !conf.is_geometrically_admissible() {
+        return None;
+    }
     let clean_conf = conf;
     let ring = conf.ring();
     if nlive == 0 {
