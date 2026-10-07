@@ -1,13 +1,33 @@
+# Build artifacts (Rust / Lean / C)
 /target
+.lake/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Compiled C verifiers
+discharge
+discharge_track
+discharge_universal
+discharge_profiler
+discharge_augmented
+
+# Generated discharging runtime files
+outlet.et
+rsst_coverage.txt
+test_*.conf
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# TeX / LaTeX artifacts
 anc_tools/
 *.aux
 *.log
 *.out
-outlet.et
-test_*.conf
-__pycache__/
-*.pyc
 *.toc
-.lake/
 *.blg
-rsst_coverage.txt
+*.bbl

@@ -5,7 +5,12 @@ echo "==========================================================================
 echo "    VERIFICAÇÃO FORMAL DUPLA: CONJUNTO DE 25 CONFIGURAÇÕES (4CT)               "
 echo "================================================================================"
 
-echo ""
+# Compilar verificador C se necessário
+if [ ! -f ./discharge ]; then
+    echo "  -> Compilando discharge (gcc -O3)..."
+    gcc -O3 -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-implicit-int -Wno-format -Wno-unused-result discharge.c -o discharge
+fi
+
 echo "[PASSO 1/2] Verificação Oficial RSST em C (discharge) - 5 Apresentações..."
 for p in present7 present8 present9 present10 present11; do
     echo -n "  -> Verificando $p... "
@@ -14,6 +19,9 @@ done
 
 echo ""
 echo "[PASSO 2/2] Verificação Algébrica Rigorosa em Rust Puro (quatro_cores)..."
+if [ ! -f ../target/release/quatro_cores ]; then
+    (cd .. && cargo build --release)
+fi
 ../target/release/quatro_cores verify-file unavoidable_25.conf 50
 
 echo ""

@@ -1,4 +1,4 @@
-name: Rust CI
+name: CI & Formal Verification
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ master, main ]
 
 jobs:
-  test:
-    name: Build & Test
+  algebraic-and-discharging:
+    name: Algebraic & Discharging Verification
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -17,14 +17,26 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check code formatting
-        run: cargo fmt --check || true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Run unit tests
+      - name: Install Python dependencies
+        run: pip install scipy
+
+      - name: Run Rust unit tests
         run: cargo test --verbose
-
-      - name: Check benchmark compilation
-        run: cargo check --benches
 
       - name: Build release binary
         run: cargo build --release
+
+      - name: Compile C Discharging Verifiers
+        run: make verifiers
+
+      - name: Verify 21-Configuration World Record (Folder 10)
+        run: ./scripts/verify.sh 21
+
+      - name: Verify 10-Configuration Inverse Discharging Model (Folder 11)
+        run: ./scripts/verify.sh 10
