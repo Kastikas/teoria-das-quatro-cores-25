@@ -119,7 +119,11 @@ impl ReducibilityEngine {
         let is_d_reducible = nlive == 0;
         let mut is_c_reducible = false;
 
-        if !is_d_reducible && angles.contract[0] > 0 && self.check_contract(angles, &live, nlive) {
+        if !is_d_reducible
+            && angles.contract[0] > 0
+            && crate::graph::validate_sparse_contract(conf, angles).is_ok()
+            && self.check_contract(angles, &live, nlive)
+        {
             is_c_reducible = true;
         }
 
@@ -814,5 +818,45 @@ mod tests {
         // Test true || true -> true
         report.is_d_reducible = true;
         assert!(report.is_reducible());
+    }
+
+    #[test]
+    fn test_pruned_p_0_7322_3_is_not_reducible() {
+        let mut conf = Configuration::new(1, 9, 6, 0);
+        conf.name = "p_0.7322_3".to_string();
+        conf.contract_edges = vec![(6, 9), (5, 9)];
+        conf.set_vertex(1, &[2, 7, 9, 6]);
+        conf.set_vertex(2, &[3, 7, 1]);
+        conf.set_vertex(3, &[4, 8, 7, 2]);
+        conf.set_vertex(4, &[5, 8, 3]);
+        conf.set_vertex(5, &[6, 9, 8, 4]);
+        conf.set_vertex(6, &[1, 9, 5]);
+        conf.set_vertex(7, &[2, 3, 8, 9, 1]);
+        conf.set_vertex(8, &[3, 4, 5, 9, 7]);
+        conf.set_vertex(9, &[8, 5, 6, 1, 7]);
+
+        let angles = find_angles(&conf);
+        assert!(
+            validate_sparse_contract(&conf, &angles).is_err(),
+            "Contract [(6,9), (5,9)] shares a triangle with ring edge (5,6) and must be rejected!"
+        );
+        let engine = ReducibilityEngine::new();
+        let report = engine.test_configuration(&conf, &angles);
+        assert!(!report.is_reducible(), "p_0.7322_3 (3 internal deg-5 vertices) cannot be reducible!");
+    }
+
+    #[test]
+    fn test_canonical_629_all_pass_strict_validation() {
+        let configs = crate::graph::read_configurations("01_modelo_629_rsst_canonico/unavoidable_629.conf")
+            .expect("Failed to read unavoidable_629.conf");
+        assert_eq!(configs.len(), 629);
+        let engine = ReducibilityEngine::new();
+        for conf in &configs {
+            assert_eq!(conf.check_rsst_admissibility(), Ok(()), "Failed admissibility: {}", conf.name);
+            let angles = find_angles(conf);
+            assert_eq!(validate_sparse_contract(conf, &angles), Ok(()), "Invalid contract: {}", conf.name);
+            let report = engine.test_configuration(conf, &angles);
+            assert!(report.is_reducible(), "Canonical config {} failed reducibility!", conf.name);
+        }
     }
 }

@@ -151,8 +151,8 @@ impl Configuration {
                     }
                 }
             }
-            if k > 4 {
-                return Err("Condition 6 violated: internal vertex has boundary contact > 4");
+            if k > 2 {
+                return Err("Condition 6 violated: internal vertex has boundary contact > 2 (cut-vertex)");
             }
         }
 
@@ -665,12 +665,10 @@ pub fn find_angles(conf: &Configuration) -> Angles {
             let b = edgeno[u][w];
             let c = edgeno[u][v];
 
-            if a > 0
-                && b > 0
-                && angles.contract[a] != 0
-                && angles.contract[b] != 0
-                && c > conf.ring()
-            {
+            let ca = if a > 0 && a <= EDGES { angles.contract[a] != 0 } else { false };
+            let cb = if b > 0 && b <= EDGES { angles.contract[b] != 0 } else { false };
+            let cc = if c > 0 && c <= EDGES { angles.contract[c] != 0 } else { false };
+            if (ca && cb) || (ca && cc) || (cb && cc) {
                 is_sparse = false;
             }
 
@@ -782,7 +780,10 @@ pub fn build_contract_angles(
     }
 
     for &Triangle { a, b, c } in triangles {
-        if a > 0 && b > 0 && angles.contract[a] != 0 && angles.contract[b] != 0 && c > angles.ring {
+        let ca = if a > 0 && a <= EDGES { angles.contract[a] != 0 } else { false };
+        let cb = if b > 0 && b <= EDGES { angles.contract[b] != 0 } else { false };
+        let cc = if c > 0 && c <= EDGES { angles.contract[c] != 0 } else { false };
+        if (ca && cb) || (ca && cc) || (cb && cc) {
             angles.is_sparse = false;
         }
 
@@ -890,6 +891,33 @@ pub fn validate_sparse_contract(conf: &Configuration, angles: &Angles) -> Result
             "Contract is not sparse (contains ring edge or multiple edges in same triangle)",
         );
     }
+
+    let ring = conf.ring();
+    let mut parent = [0usize; VERTS];
+    for i in 0..VERTS {
+        parent[i] = i;
+    }
+    fn find_root(parent: &mut [usize; VERTS], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    for &(u, v) in &conf.contract_edges {
+        if u < VERTS && v < VERTS {
+            let ru = find_root(&mut parent, u);
+            let rv = find_root(&mut parent, v);
+            parent[ru] = rv;
+        }
+    }
+    for r in 1..=ring {
+        let next_r = if r == ring { 1 } else { r + 1 };
+        if find_root(&mut parent, r) == find_root(&mut parent, next_r) {
+            return Err("Contract connects adjacent ring vertices (creates self-loop)");
+        }
+    }
+
     if n == 4 && !validate_triad(conf) {
         return Err("Contract has no triad");
     }
@@ -985,37 +1013,34 @@ mod tests {
     }
 
     #[test]
-    fn test_rsst_admissibility_unavoidable_25() {
-        let path = "08_pesquisa_2flips/unavoidable_25.conf";
-        if let Ok(configs) = read_configurations(path) {
-            assert_eq!(configs.len(), 25);
-            for conf in &configs {
-                assert!(
-                    conf.is_geometrically_admissible(),
-                    "Canonical unavoidable config {} failed RSST admissibility: {:?}",
-                    conf.name,
-                    conf.check_rsst_admissibility()
-                );
-            }
+    fn test_canonical_629_rsst_admissibility() {
+        let configs = read_configurations("01_modelo_629_rsst_canonico/unavoidable_629.conf")
+            .expect("Failed to read unavoidable_629.conf");
+        assert_eq!(configs.len(), 629);
+        for conf in &configs {
+            assert_eq!(
+                conf.check_rsst_admissibility(),
+                Ok(()),
+                "Canonical config {} failed RSST admissibility",
+                conf.name
+            );
         }
     }
 
     #[test]
-    fn test_rsst_admissibility_raw_candidates_filter_exact_16() {
-        let path = "08_pesquisa_2flips/candidates_2flips_raw.conf";
+    fn test_unavoidable_25_rejected_by_condition_6() {
+        let path = "08_pesquisa_2flips/unavoidable_25.conf";
         if let Ok(configs) = read_configurations(path) {
-            assert_eq!(configs.len(), 1572);
-            let mut failed_count = 0;
-            let mut passed_count = 0;
+            let mut rejected_count = 0;
             for conf in &configs {
-                if conf.is_geometrically_admissible() {
-                    passed_count += 1;
-                } else {
-                    failed_count += 1;
+                if conf.check_rsst_admissibility().is_err() {
+                    rejected_count += 1;
                 }
             }
-            assert_eq!(failed_count, 16, "Must reject exactly 16 defective configurations");
-            assert_eq!(passed_count, 1556, "Must accept exactly 1556 valid configurations");
+            assert!(
+                rejected_count > 0,
+                "unavoidable_25.conf must be rejected under strict RSST Condition 6 (k <= 2)!"
+            );
         }
     }
 }

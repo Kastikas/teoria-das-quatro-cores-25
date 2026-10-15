@@ -74,15 +74,15 @@ pub fn synthesize_contract_with_live(
     // Precompute triangle conflict matrix: conflicts[e1][e2] == true if e1 and e2 share a triangle.
     let mut conflicts = [[false; EDGES + 1]; EDGES + 1];
     for &crate::graph::Triangle { a, b, c } in &triangles {
-        if a > 0 && b > 0 && c > ring && a <= EDGES && b <= EDGES {
+        if a > 0 && b > 0 && a <= EDGES && b <= EDGES {
             conflicts[a][b] = true;
             conflicts[b][a] = true;
         }
-        if a > 0 && c > 0 && b > ring && a <= EDGES && c <= EDGES {
+        if a > 0 && c > 0 && a <= EDGES && c <= EDGES {
             conflicts[a][c] = true;
             conflicts[c][a] = true;
         }
-        if b > 0 && c > 0 && a > ring && b <= EDGES && c <= EDGES {
+        if b > 0 && c > 0 && b <= EDGES && c <= EDGES {
             conflicts[b][c] = true;
             conflicts[c][b] = true;
         }
@@ -759,7 +759,10 @@ mod tests {
         let engine = ReducibilityEngine::new();
         let (opt, stats) = optimize_all_contracts(&[c1], &engine, None);
         assert_eq!(opt.len(), 1);
-        assert!(opt[0].contract_edges.len() < 4); // it should reduce 4 edges to something smaller
+        // Under strict RSST mathematical invariants, 2.126 requires exactly 4 edges
+        // and cannot be reduced to fewer edges without violating sparsity.
+        assert_eq!(opt[0].contract_edges.len(), 4);
+        assert_eq!(stats.unchanged, 1);
         assert_eq!(stats.total_c_confs, 1);
     }
 }

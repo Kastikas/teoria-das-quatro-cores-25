@@ -1008,7 +1008,7 @@ int lineno;
 	 X[x][y] = 1;
 	 w = L[u][i < d ? i + 1 : 1];
 	 if (w <= ring) {
-	    if (worried && adjmat[x][y] == -1 && adjmat[y][x] == -1)
+	    if (worried)
 	       Error("Isomorphism error 5", lineno);
 	    continue;
 	 }
@@ -1335,24 +1335,24 @@ int best, secondbest;
       r = (h >= j) ? h - j : h - j + d;
       if (r <= 2)
 	 continue;
-      if (!found[u]) {
-	 Q[nfound].z = u;
-	 Q[nfound].xi = u > ring ? L[u][0] : 0;
-	 Q[nfound].u = L[v][(h == d) ? 1 : h + 1];
-	 Q[nfound].v = v;
-	 nfound++;
-	 found[u] = 1;
-      }
       for (g = (h == 1) ? d : h - 1; g != j; g = (g == 1) ? d : g - 1) {
 	 t = L[v][g];
-	 if ((t <= ring) || (found[t]))
-	    continue;
+	 if ((t <= ring) || (found[t])) {
+	    (void) printf("Error in getquestions\n");
+	    exit(1);
+	 }
 	 Q[nfound].z = t;
 	 Q[nfound].xi = t > ring ? L[t][0] : 0;
 	 Q[nfound].u = Q[nfound - 1].z;
 	 Q[nfound].v = v;
 	 nfound++;
 	 found[t] = 1;
+      }
+   }
+   for (v = ring + 1; v <= nverts; v++) {
+      if (!found[v]) {
+         (void) fprintf(stderr, "Error in getquestions: internal vertex %d not reached!\n", v);
+         exit(1);
       }
    }
    Q[nfound].u = -1;
@@ -1600,7 +1600,7 @@ long *C;
 	    if (A[i][j < d - 1 ? j + 2 : j + 2 - d] <= r)
 	       k++;
 	 }
-      if (k > 4)
+      if (k > 2)
 	 ReadErr(6, name);
    }
    /* condition (7) */
@@ -1894,24 +1894,24 @@ tp_question Q;
       r = (h >= j) ? h - j : h - j + d;
       if (r <= 2)
 	 continue;
-      if (!found[u]) {
-	 Q[nfound].z = u;
-	 Q[nfound].xi = u > ring ? L[u][0] : 0;
-	 Q[nfound].u = L[v][(h == d) ? 1 : h + 1];
-	 Q[nfound].v = v;
-	 nfound++;
-	 found[u] = 1;
-      }
       for (g = (h == 1) ? d : h - 1; g != j; g = (g == 1) ? d : g - 1) {
 	 t = L[v][g];
-	 if ((t <= ring) || (found[t]))
-	    continue;
+	 if ((t <= ring) || (found[t])) {
+	    (void) printf("Error in getquestions\n");
+	    exit(1);
+	 }
 	 Q[nfound].z = t;
 	 Q[nfound].xi = t > ring ? L[t][0] : 0;
 	 Q[nfound].u = Q[nfound - 1].z;
 	 Q[nfound].v = v;
 	 nfound++;
 	 found[t] = 1;
+      }
+   }
+   for (v = ring + 1; v <= nverts; v++) {
+      if (!found[v]) {
+         (void) fprintf(stderr, "Error in getquestions: internal vertex %d not reached!\n", v);
+         exit(1);
       }
    }
    Q[nfound].u = -1;	/* indicates end */
@@ -2034,6 +2034,7 @@ tp_question question;
    tp_query *Q;
 
    deg = degree[0];
+   for (j = 0; j < CARTVERT; j++) image[j] = -1;
    used_epoch++;
    if (used_epoch == 0) {
       for (j = 0; j < CARTVERT; j++) used[j] = 0;
