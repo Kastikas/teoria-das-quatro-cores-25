@@ -1,5 +1,6 @@
 # Build artifacts (Rust / Lean / C)
 /target
+/bin/
 .lake/
 *.o
 *.a

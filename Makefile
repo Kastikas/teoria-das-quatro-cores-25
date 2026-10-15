@@ -5,9 +5,15 @@ CC ?= gcc
 CFLAGS ?= -O3 -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-implicit-int -Wno-format -Wno-unused-result
 CARGO ?= cargo
 
-.PHONY: all build test verifiers clean verify-25 verify-24 verify-21 verify-10 verify-all help
+.PHONY: all build test verifiers clean verify-24 verify-21 verify-10 verify-all help
 
-all: build verifiers
+all: build verifiers bin/discharge
+
+bin:
+	mkdir -p bin
+
+bin/discharge: src/discharge.c | bin
+	$(CC) $(CFLAGS) -o $@ $<
 
 help:
 	@echo "=========================================================================="
@@ -29,14 +35,11 @@ build:
 test:
 	$(CARGO) test
 
-verifiers: 08_pesquisa_2flips/discharge \
+verifiers: bin/discharge \
            09_perspectivas_futuras_3flips/discharge_universal \
            10_recorde_21_configuracoes/discharge_universal \
            11_descarregamento_inverso_sub15/discharge_universal \
            11_descarregamento_inverso_sub15/discharge_profiler
-
-08_pesquisa_2flips/discharge: 08_pesquisa_2flips/discharge.c
-	$(CC) $(CFLAGS) -o $@ $<
 
 09_perspectivas_futuras_3flips/discharge_universal: 09_perspectivas_futuras_3flips/discharge_universal.c
 	$(CC) $(CFLAGS) -o $@ $<
@@ -50,10 +53,6 @@ verifiers: 08_pesquisa_2flips/discharge \
 11_descarregamento_inverso_sub15/discharge_profiler: 11_descarregamento_inverso_sub15/discharge_profiler.c
 	$(CC) $(CFLAGS) -o $@ $<
 
-verify-25: build 08_pesquisa_2flips/discharge
-	@echo ">>> Executando verificação do Modelo de 25 Configurações..."
-	@cd 08_pesquisa_2flips && ./verify_25.sh
-
 verify-24: build 09_perspectivas_futuras_3flips/discharge_universal
 	@echo ">>> Executando verificação do Modelo de 24 Configurações..."
 	@cd 09_perspectivas_futuras_3flips && ./verify_24.sh
@@ -66,9 +65,10 @@ verify-10: build 11_descarregamento_inverso_sub15/discharge_profiler
 	@echo ">>> Executando verificação do Modelo Inverso de 10 Configurações..."
 	@cd 11_descarregamento_inverso_sub15 && ./verify_10_model.sh
 
-verify-all: verify-21 verify-10 verify-25
+verify-all: verify-21 verify-10
 
 clean:
 	$(CARGO) clean
+	rm -rf bin/
 	@find . -type f \( -name "discharge" -o -name "discharge_track" -o -name "discharge_universal" -o -name "discharge_profiler" -o -name "outlet.et" \) -delete
 	@echo "Ambiente limpo com sucesso."

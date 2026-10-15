@@ -33,7 +33,10 @@ jobs:
         run: cargo build --release
 
       - name: Compile C Discharging Verifiers
-        run: make verifiers
+        run: make all
+
+      - name: Verify Canonical RSST 629 Model (Folder 01)
+        run: bash 01_modelo_629_rsst_canonico/verify_629.sh
 
       - name: Verify 21-Configuration World Record (Folder 10)
         run: ./scripts/verify.sh 21

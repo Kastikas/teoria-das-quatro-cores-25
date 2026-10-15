@@ -19,16 +19,22 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+int track_mode = 0;
 
 /* constants */
 #define VERTS      40	/* max number of vertices in a free completion + 1 */ // jps
 #define DEG        13	/* max degree of a vertex in a free completion + 1 */
 /* must be at least 13 because of row 0            */
-#define CONFS      4000	/* max number of configurations	 */ // jps
+#define CONFS      10000	/* max number of configurations	 */ // jps
+int used_confs[10000];
+int total_reduces = 0;
+int global_noconf = 0;
 #define MAXVAL     12
 #define CARTVERT   5*MAXVAL+2	/* domain of l_A, u_A, where A is an axle */
-char    RULEFILE[256];          /* file containing rules */     // jps (used to be defined as "rules", now entered on command line)
-char    UNAVSET[256];           /* file containing unav set */  // jps (used to be defined as "unavoidable.conf", now entered on command line)
+char    RULEFILE[256];           /* file containing rules */     // jps (used to be defined as "rules", now entered on command line)
+char    UNAVSET[256];            /* file containing unav set */  // jps (used to be defined as "unavoidable.conf", now entered on command line)
 #define OUTLETFILE "outlet.et"	/* outlets will be written into this file */
 #define INFTY      12	/* the "12" in the definition of limited part  */
 #define MAXOUTLETS 500	/* max number of outlets */ // jps
@@ -158,7 +164,13 @@ main(ac, av)
 int ac;
 char *av[];
 {
-   int lev;	/* level of line being processed */
+   int lev;
+
+   if (ac > 1 && (strcmp(av[1], "-t") == 0 || strcmp(av[1], "--track") == 0)) {
+      track_mode = 1;
+      ac--;
+      av++;
+   }	/* level of line being processed */
    int deg;	/* degree of hub; constant throughout */
    int prtline;	/* print details about line number "prtline" */
    int nosym;	/* number of symmetries, see "sym" below */
@@ -299,8 +311,25 @@ char *av[];
       Error("`Q.E.D.' expected", lineno);
    (void) printf("%s verified.\n", fname);
    fflush(stdout);
+
+   if (track_mode) {
+       int used_count = 0;
+       int i;
+       FILE *fout = fopen("used_configurations.txt", "a");
+       if (fout) {
+           for (i = 0; i < global_noconf; i++) {
+               if (used_confs[i] > 0) {
+                   used_count++;
+                   fprintf(fout, "%d %d\n", i + 1, used_confs[i]);
+               }
+           }
+           fclose(fout);
+       }
+       printf("\n[ESTATISTICA] Configuracoes usadas neste script: %d / %d (Total de reducoes no script: %d)\n", used_count, global_noconf, total_reduces);
+   }
    return (0);
 }/* main */
+
 
 /*************************************************************************
        Error
@@ -833,6 +862,7 @@ int lineno, print;
 tp_axle *A;
 {
    int h, i, j, v, redring, redverts;
+   int a, b, k, qa, qb, b_cnt, *b_list;
    static int naxles, noconf;
    static tp_confmat *conf;
    static tp_edgelist edgelist;
@@ -840,6 +870,13 @@ tp_axle *A;
    static tp_vertices image;
    static tp_axle **Astack, *B;
    static tp_question *redquestions;
+
+#define BUCKET_DEG_A 12
+#define BUCKET_DEG_B 9
+   static int bucket_count[BUCKET_DEG_A][BUCKET_DEG_B];
+   static int *bucket_confs[BUCKET_DEG_A][BUCKET_DEG_B];
+   static int unbucketed_count = 0;
+   static int *unbucketed_confs = NULL;
 
    if (A == NULL) {
       ALLOC(Astack, MAXASTACK, tp_axle *);
@@ -859,6 +896,60 @@ tp_axle *A;
 	 fflush(stdout);
       }
       noconf = GetConf(conf, redquestions);
+      global_noconf = noconf;
+
+      /* Optimization 4: Fast bucketing index by (question[0].xi, question[1].xi) */
+      for (a = 0; a < BUCKET_DEG_A; a++)
+         for (b = 0; b < BUCKET_DEG_B; b++)
+            bucket_count[a][b] = 0;
+      unbucketed_count = 0;
+
+      for (h = 0; h < noconf; h++) {
+         qa = redquestions[h][0].xi;
+         qb = redquestions[h][1].xi;
+         if (qa >= 5 && qa < BUCKET_DEG_A && qb >= 5 && qb < BUCKET_DEG_B && qb <= qa) {
+            bucket_count[qa][qb]++;
+         } else {
+            unbucketed_count++;
+         }
+      }
+
+      for (a = 0; a < BUCKET_DEG_A; a++) {
+         for (b = 0; b < BUCKET_DEG_B; b++) {
+            if (bucket_count[a][b] > 0) {
+               bucket_confs[a][b] = (int *) malloc(bucket_count[a][b] * sizeof(int));
+               if (bucket_confs[a][b] == NULL) {
+                  fprintf(stderr, "Out of memory allocating bucket [%d][%d]\n", a, b);
+                  exit(1);
+               }
+            } else {
+               bucket_confs[a][b] = NULL;
+            }
+         }
+      }
+
+      if (unbucketed_count > 0) {
+         unbucketed_confs = (int *) malloc(unbucketed_count * sizeof(int));
+      }
+
+      {
+         int fill_idx[BUCKET_DEG_A][BUCKET_DEG_B];
+         int unb_idx = 0;
+         for (a = 0; a < BUCKET_DEG_A; a++)
+            for (b = 0; b < BUCKET_DEG_B; b++)
+               fill_idx[a][b] = 0;
+
+         for (h = 0; h < noconf; h++) {
+            qa = redquestions[h][0].xi;
+            qb = redquestions[h][1].xi;
+            if (qa >= 5 && qa < BUCKET_DEG_A && qb >= 5 && qb < BUCKET_DEG_B && qb <= qa) {
+               bucket_confs[qa][qb][fill_idx[qa][qb]++] = h;
+            } else {
+               unbucketed_confs[unb_idx++] = h;
+            }
+         }
+      }
+
       return (0);
    }
    /* This part is executed when A!=NULL */
@@ -873,9 +964,51 @@ tp_axle *A;
       }
       Getadjmat(B, adjmat);
       GetEdgelist(B, edgelist);
-      for (h = 0; h < noconf; ++h)
-	 if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image))
-	    break;
+      static FILE *cov_file = NULL;
+      if (track_mode && cov_file == NULL) cov_file = fopen("rsst_coverage.txt", "a");
+      int first_h = -1;
+      static tp_vertices first_image;
+      for (a = 5; a <= 11; a++) {
+         for (b = 5; b <= 8 && b <= a; b++) {
+            if (edgelist[a][b][0] == 0) continue;
+            b_cnt = bucket_count[a][b];
+            if (b_cnt == 0) continue;
+            b_list = bucket_confs[a][b];
+            for (k = 0; k < b_cnt; k++) {
+               h = b_list[k];
+               if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
+                  if (first_h == -1 || h < first_h) {
+                     first_h = h;
+                     for (j = 0; j < CARTVERT; j++) first_image[j] = image[j];
+                  }
+                  if (track_mode && cov_file) fprintf(cov_file, "%d ", h + 1);
+               }
+            }
+         }
+      }
+
+      for (k = 0; k < unbucketed_count; k++) {
+         h = unbucketed_confs[k];
+         if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
+            if (first_h == -1 || h < first_h) {
+               first_h = h;
+               for (j = 0; j < CARTVERT; j++) first_image[j] = image[j];
+            }
+            if (track_mode && cov_file) fprintf(cov_file, "%d ", h + 1);
+         }
+      }
+      if (first_h != -1) {
+         if (track_mode && cov_file) fprintf(cov_file, "\n");
+         h = first_h;
+         for (j = 0; j < CARTVERT; j++) image[j] = first_image[j];
+         if (track_mode) {
+            used_confs[h]++;
+            total_reduces++;
+            printf("USED_CONFIG_ID: %d\n", h + 1);
+         }
+      } else {
+         h = noconf;
+      }
       if (h == noconf) {
 	 if (print)
 	    (void) printf("Not reducible\n");
@@ -994,7 +1127,7 @@ int lineno;
 	 X[x][y] = 1;
 	 w = L[u][i < d ? i + 1 : 1];
 	 if (w <= ring) {
-	    if (worried)
+	    if (worried && adjmat[x][y] == -1 && adjmat[y][x] == -1)
 	       Error("Isomorphism error 5", lineno);
 	    continue;
 	 }
@@ -1412,7 +1545,7 @@ long *C;
 	    if (A[i][j < d - 1 ? j + 2 : j + 2 - d] <= r)
 	       k++;
 	 }
-      if (k > 2)
+      if (k > 4)
 	 ReadErr(6, name);
    }
    /* condition (7) */
@@ -1706,17 +1839,18 @@ tp_question Q;
       r = (h >= j) ? h - j : h - j + d;
       if (r <= 2)
 	 continue;
-      Q[nfound].z = u;
-      Q[nfound].xi = u > ring ? L[u][0] : 0;
-      Q[nfound].u = L[v][(h == d) ? 1 : h + 1];
-      Q[nfound].v = v;
-      nfound++;
+      if (!found[u]) {
+	 Q[nfound].z = u;
+	 Q[nfound].xi = u > ring ? L[u][0] : 0;
+	 Q[nfound].u = L[v][(h == d) ? 1 : h + 1];
+	 Q[nfound].v = v;
+	 nfound++;
+	 found[u] = 1;
+      }
       for (g = (h == 1) ? d : h - 1; g != j; g = (g == 1) ? d : g - 1) {
 	 t = L[v][g];
-	 if ((t <= ring) || (found[t])) {
-	    (void) printf("Error in getquestions\n");
-	    exit(1);
-	 }
+	 if ((t <= ring) || (found[t]))
+	    continue;
 	 Q[nfound].z = t;
 	 Q[nfound].xi = t > ring ? L[t][0] : 0;
 	 Q[nfound].u = Q[nfound - 1].z;
@@ -1840,19 +1974,21 @@ tp_question question;
 
 {
    int deg, j, w;
-   static int used[CARTVERT];
+   static unsigned int used[CARTVERT];
+   static unsigned int used_epoch = 1;
    tp_query *Q;
 
    deg = degree[0];
-   for (j = 0; j < CARTVERT; j++) {
-      used[j] = 0;
-      image[j] = -1;
+   used_epoch++;
+   if (used_epoch == 0) {
+      for (j = 0; j < CARTVERT; j++) used[j] = 0;
+      used_epoch = 1;
    }
    image[0] = clockwise;
    image[question[0].z] = x;
    image[question[1].z] = y;
-   used[x] = 1;
-   used[y] = 1;
+   used[x] = used_epoch;
+   used[y] = used_epoch;
    for (Q = question + 2; Q->u >= 0; Q++) {
       if (clockwise)
 	 w = adjmat[image[Q->u]][image[Q->v]];
@@ -1862,15 +1998,15 @@ tp_question question;
 	 return (0);
       if (Q->xi && Q->xi != degree[w])
 	 return (0);
-      if (used[w])
+      if (used[w] == used_epoch)
 	 return (0);
       image[Q->z] = w;
-      used[w] = 1;
+      used[w] = used_epoch;
    }
 
    /* test if image is well-positioned */
    for (j = 1; j <= deg; j++)
-      if (!used[j] && used[deg + j] && used[(j == 1) ? 2 * deg : deg + j - 1])
+      if (used[j] != used_epoch && used[deg + j] == used_epoch && used[(j == 1) ? 2 * deg : deg + j - 1] == used_epoch)
 	 return (0);
    return (1);
 }/* RootedSubConf */
@@ -1893,14 +2029,44 @@ tp_question question;
 
 {
    int i, x, y, *pedge;
+   int q2_u = question[2].u;
+   int q2_v = question[2].v;
+   int q2_xi = question[2].xi;
+   int q0_z = question[0].z;
+   int q1_z = question[1].z;
 
    pedge = edgelist[question[0].xi][question[1].xi];
    for (i = 1; i <= pedge[0]; i++) {
       x = pedge[i++];
       y = pedge[i];
-      if (RootedSubConf(degree, adjmat, question, image, x, y, 1) ||
-	  RootedSubConf(degree, adjmat, question, image, x, y, 0))
-	 return (1);
+
+      /* Fast-filter for clockwise orientation */
+      int ok_cw = 1;
+      if (q2_u >= 0) {
+         int u_val = (q2_u == q0_z) ? x : ((q2_u == q1_z) ? y : -1);
+         int v_val = (q2_v == q0_z) ? x : ((q2_v == q1_z) ? y : -1);
+         if (u_val != -1 && v_val != -1) {
+            int w = adjmat[u_val][v_val];
+            if (w == -1 || (q2_xi && q2_xi != degree[w]) || w == x || w == y)
+               ok_cw = 0;
+         }
+      }
+      if (ok_cw && RootedSubConf(degree, adjmat, question, image, x, y, 1))
+         return (1);
+
+      /* Fast-filter for counterclockwise orientation */
+      int ok_ccw = 1;
+      if (q2_u >= 0) {
+         int u_val = (q2_u == q0_z) ? x : ((q2_u == q1_z) ? y : -1);
+         int v_val = (q2_v == q0_z) ? x : ((q2_v == q1_z) ? y : -1);
+         if (u_val != -1 && v_val != -1) {
+            int w = adjmat[v_val][u_val];
+            if (w == -1 || (q2_xi && q2_xi != degree[w]) || w == x || w == y)
+               ok_ccw = 0;
+         }
+      }
+      if (ok_ccw && RootedSubConf(degree, adjmat, question, image, x, y, 0))
+         return (1);
    }
    return (0);
 }/* SubConf */

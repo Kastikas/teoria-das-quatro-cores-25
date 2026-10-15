@@ -29,7 +29,6 @@ usage() {
     echo -e "${BOLD}Alvos disponíveis:${NC}"
     echo -e "  ${GREEN}21${NC}    - [RECORDE MUNDIAL] Modelo Canônico de 21 Configurações (Pasta 10)"
     echo -e "  ${GREEN}10${NC}    - [FRONTEIRA SUB-15] Modelo Inverso de 10 Configurações + 75 Regras (Pasta 11)"
-    echo -e "  ${GREEN}25${NC}    - Modelo Canônico Clássico de 25 Configurações (Pasta 08)"
     echo -e "  ${GREEN}24${NC}    - Modelo com Isomorfismo D_22 de 24 Configurações (Pasta 09)"
     echo -e "  ${GREEN}all${NC}   - Executa a verificação completa de todos os modelos sequencialmente"
     echo -e "  ${GREEN}test${NC}  - Executa a suíte de testes unitários do motor algébrico em Rust"
@@ -50,10 +49,6 @@ case "$TARGET" in
         echo -e "${BOLD}${BLUE}>>> Executando Verificação da Fronteira Inversa: 10 Configurações (Pasta 11)...${NC}\n"
         make verify-10
         ;;
-    25)
-        echo -e "${BOLD}${BLUE}>>> Executando Verificação do Modelo Canônico: 25 Configurações (Pasta 08)...${NC}\n"
-        make verify-25
-        ;;
     24)
         echo -e "${BOLD}${BLUE}>>> Executando Verificação do Modelo de 24 Configurações (Pasta 09)...${NC}\n"
         make verify-24
@@ -66,21 +61,17 @@ case "$TARGET" in
         echo -e "${BOLD}${BLUE}>>> Executando Verificação Geral de Todos os Modelos...${NC}\n"
         START_TIME=$(date +%s)
         
-        echo -e "${YELLOW}[1/4] Suíte de Testes Rust...${NC}"
+        echo -e "${YELLOW}[1/3] Suíte de Testes Rust...${NC}"
         cargo test --quiet
         echo -e "${GREEN}✓ Testes em Rust: OK${NC}\n"
 
-        echo -e "${YELLOW}[2/4] Recorde Mundial de 21 Configurações (Pasta 10)...${NC}"
+        echo -e "${YELLOW}[2/3] Recorde Mundial de 21 Configurações (Pasta 10)...${NC}"
         make verify-21
         echo -e "${GREEN}✓ Modelo de 21 Configurações: OK${NC}\n"
 
-        echo -e "${YELLOW}[3/4] Modelo Inverso de 10 Configurações (Pasta 11)...${NC}"
+        echo -e "${YELLOW}[3/3] Modelo Inverso de 10 Configurações (Pasta 11)...${NC}"
         make verify-10
         echo -e "${GREEN}✓ Modelo de 10 Configurações: OK${NC}\n"
-
-        echo -e "${YELLOW}[4/4] Modelo Canônico de 25 Configurações (Pasta 08)...${NC}"
-        make verify-25
-        echo -e "${GREEN}✓ Modelo de 25 Configurações: OK${NC}\n"
 
         END_TIME=$(date +%s)
         ELAPSED=$((END_TIME - START_TIME))
