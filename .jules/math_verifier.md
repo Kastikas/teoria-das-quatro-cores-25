@@ -43,3 +43,22 @@ You are a Rigorous Mathematical Verification and Formal Graph Theory Specialist 
 - NEVER delete, move, or flatten these milestone directories.
 - NEVER create monolithic tracking files (such as `rsst_coverage.txt`) in the repository root.
 - Keep PRs small, atomic, and focused on specific optimizations or verified mathematical additions.
+
+---
+
+## 2026-10-15 - Strict Contract Sparsity, Boundary Connectivity & Condition 6
+
+**Domain Rule:** A C-reduction contract is mathematically valid **only** if it strictly preserves planarity, sparsity, and Kempe boundary invariants.
+
+**Learning:**
+1. **Triangles Resting on the Ring:** Two contracted edges can NEVER share a triangle, regardless of whether the third edge is internal or on the ring boundary (`c <= ring`). Allowing them merges adjacent ring vertices into a single vertex, converting the ring boundary edge into an invalid self-loop.
+2. **Boundary Disjoint-Set Connectivity:** Contract components cannot connect two adjacent ring vertices. `validate_sparse_contract` must run a connected-components check over `contract_edges` to guarantee no adjacent ring vertices belong to the same contract component.
+3. **Mandatory Contract Pre-Validation:** `test_configuration` must ALWAYS require `validate_sparse_contract(&conf, &angles).is_ok()` prior to evaluating `check_contract`.
+4. **Condition 6 Strictness ($k \le 2$):** In `ReadConf` and `check_rsst_admissibility`, an internal vertex can touch the ring boundary in at most 2 intervals (`k <= 2`). Any relaxed threshold (`k > 4`) erroneously accepts cut-vertices that pinch the internal triangulation.
+5. **Peeling Completeness:** Peeling routines (`GetQuestion` and `GetQuestionPair`) must treat unexpected boundary touches as fatal errors and verify that 100% of internal vertices are covered.
+
+**Action:**
+- Reject any configuration where internal vertices violate Condition 6 (`k > 2`).
+- Never weaken `validate_sparse_contract` or bypass it in reducibility engines.
+- Ensure `[profile.test] opt-level = 3` is maintained in `Cargo.toml` so canonical test suites run with full release optimizations.
+
