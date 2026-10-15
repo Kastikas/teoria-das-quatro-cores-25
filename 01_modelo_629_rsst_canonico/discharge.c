@@ -27,8 +27,8 @@
 #define CONFS      4000	/* max number of configurations	 */ // jps
 #define MAXVAL     12
 #define CARTVERT   5*MAXVAL+2	/* domain of l_A, u_A, where A is an axle */
-char    RULEFILE[99];           /* file containing rules */     // jps (used to be defined as "rules", now entered on command line)
-char    UNAVSET[99];            /* file containing unav set */  // jps (used to be defined as "unavoidable.conf", now entered on command line)
+char    RULEFILE[256];          /* file containing rules */     // jps (used to be defined as "rules", now entered on command line)
+char    UNAVSET[256];           /* file containing unav set */  // jps (used to be defined as "unavoidable.conf", now entered on command line)
 #define OUTLETFILE "outlet.et"	/* outlets will be written into this file */
 #define INFTY      12	/* the "12" in the definition of limited part  */
 #define MAXOUTLETS 500	/* max number of outlets */ // jps
