@@ -22,6 +22,12 @@
 #include <string.h>
 
 int track_mode = 0;
+int matrix_mode = 0;
+int deepen_mode = 0;
+int max_deepen_depth = 0;
+int forbidden_conf[10000];
+int num_forbidden = 0;
+long leaf_counter = 0;
 
 /* constants */
 #define VERTS      40	/* max number of vertices in a free completion + 1 */ // jps
@@ -83,6 +89,10 @@ typedef struct {
    tp_outlet *T;
    int x;
 } tp_posout;	/* positioned outlet */
+
+static tp_outlet global_outlets[MAXOUTLETS];
+static int global_nouts = 0;
+
 typedef struct {
    int u;
    int v;
@@ -106,6 +116,8 @@ int OutletPermitted(tp_axle *, tp_outlet *, int);
 int ReflForced(tp_axle *, tp_outlet *, int);
 void PrintOutlet(int, FILE *, tp_outlet *);
 int Reduce(tp_axle *, int, int);
+int IsChargeNonPositive(tp_axle *);
+int TryDeepenLeaf(tp_axle *, int, int);
 void CheckIso(tp_confmat, tp_axle *, tp_vertices, int);
 void CopyAxle(tp_axle *, tp_axle *);
 void PrintAxle(tp_axle *);
@@ -136,6 +148,8 @@ int OutletPermitted();
 int ReflForced();
 void PrintOutlet();
 int Reduce();
+int IsChargeNonPositive();
+int TryDeepenLeaf();
 void CheckIso();
 void CopyAxle();
 void PrintAxle();
@@ -165,12 +179,6 @@ int ac;
 char *av[];
 {
    int lev;
-
-   if (ac > 1 && (strcmp(av[1], "-t") == 0 || strcmp(av[1], "--track") == 0)) {
-      track_mode = 1;
-      ac--;
-      av++;
-   }	/* level of line being processed */
    int deg;	/* degree of hub; constant throughout */
    int prtline;	/* print details about line number "prtline" */
    int nosym;	/* number of symmetries, see "sym" below */
@@ -181,9 +189,54 @@ char *av[];
    int i, a, printmode, print, lineno;
    char *ch;
 
+   while (ac > 1 && av[1][0] == '-') {
+      if (strcmp(av[1], "-t") == 0 || strcmp(av[1], "--track") == 0) {
+         track_mode = 1;
+         ac--;
+         av++;
+      } else if (strcmp(av[1], "-m") == 0 || strcmp(av[1], "--matrix") == 0) {
+         matrix_mode = 1;
+         ac--;
+         av++;
+      } else if (strcmp(av[1], "-d") == 0 || strcmp(av[1], "--deepen") == 0) {
+         if (ac > 2) {
+            deepen_mode = 1;
+            max_deepen_depth = atoi(av[2]);
+            ac -= 2;
+            av += 2;
+         } else {
+            (void) fprintf(stderr, "Error: -d requires depth argument\n");
+            exit(1);
+         }
+      } else if (strcmp(av[1], "-f") == 0 || strcmp(av[1], "--forbid") == 0) {
+         if (ac > 2) {
+            char fbuf[4096];
+            char *token;
+            (void) strncpy(fbuf, av[2], sizeof(fbuf) - 1);
+            fbuf[sizeof(fbuf) - 1] = '\0';
+            token = strtok(fbuf, ",");
+            while (token != NULL) {
+               int fid = atoi(token);
+               if (fid >= 1 && fid <= CONFS) {
+                  forbidden_conf[fid - 1] = 1;
+                  num_forbidden++;
+               }
+               token = strtok(NULL, ",");
+            }
+            ac -= 2;
+            av += 2;
+         } else {
+            (void) fprintf(stderr, "Error: -f requires comma-separated IDs\n");
+            exit(1);
+         }
+      } else {
+         break;
+      }
+   }
+
    printmode = prtline = 0;
    if (ac < 4) { // jps
-      (void) fprintf(stderr, "Usage: %s <presentation file> <configuration file> <rule file> [<lineno> <print mode>]\n", av[0]);
+      (void) fprintf(stderr, "Usage: %s [-t] [-m] [-d <depth>] [-f <id1,id2,...>] <presentation file> <configuration file> <rule file> [<lineno> <print mode>]\n", av[0]);
       (void) fprintf(stderr, "If lineno is given and is positive will print details about that line.\n");
       (void) fprintf(stderr, "If lineno is 0 will print details about all lines. ");
       (void) fprintf(stderr, "Print modes are:\n");
@@ -277,8 +330,19 @@ char *av[];
 	 CheckSymmetry(ch, A, sym, nosym, lineno);
 	 break;
       case 'R':
-	 if (Reduce(A, lineno, print >= PRTBAS ? 1 : 0) != 1)
-	    Error("Reducibility failed", lineno);
+	 if (Reduce(A, lineno, print >= PRTBAS ? 1 : 0) != 1) {
+             if (deepen_mode) {
+                 if (TryDeepenLeaf(A, max_deepen_depth, lineno)) {
+                     if (print >= PRTBAS) {
+                         (void) printf("  Leaf at line %d closed by deepening (depth <= %d)\n", lineno, max_deepen_depth);
+                     }
+                 } else {
+                     Error("Reducibility and Leaf Deepening failed", lineno);
+                 }
+             } else {
+                 Error("Reducibility failed", lineno);
+             }
+         }
 	 break;
       case 'H':
 	 CheckHubcap(A, str, lineno, print);
@@ -515,18 +579,17 @@ char str[];	/* input line */
    int i, j, a, total, deg;
    int s[2 * MAXOUTLETS + 1];
    FILE *F = NULL;
-   static tp_outlet outlet[MAXOUTLETS], *T;
-   static int nouts;
    static tp_posout posout[2 * MAXOUTLETS];
+   tp_outlet *T;
 
    if (str == NULL) {
-      nouts = ReadOutlets(A, outlet);
-      for (i = 0; i < nouts; i++)
-	 posout[i].T = posout[i + nouts].T = outlet + i;
+      global_nouts = ReadOutlets(A, global_outlets);
+      for (i = 0; i < global_nouts; i++)
+	 posout[i].T = posout[i + global_nouts].T = global_outlets + i;
       F = fopen(OUTLETFILE, "w");
       if (F != NULL) {
-	 for (i = 0; i < nouts; i++)
-	    PrintOutlet(i, F, outlet + i);
+	 for (i = 0; i < global_nouts; i++)
+	    PrintOutlet(i, F, global_outlets + i);
 	 (void) fclose(F);
 	 (void) printf("Outlets written into file `%s'.\n", OUTLETFILE);
 	 fflush(stdout);
@@ -556,7 +619,7 @@ char str[];	/* input line */
       (void) printf("Forced positioned outlets:");
       for (i = 1; i <= deg; i++) {
 	 a = 0;	/* a=1 if edge number printed */
-	 for (T = outlet, j = 0; j < nouts; ++j, ++T)
+	 for (T = global_outlets, j = 0; j < global_nouts; ++j, ++T)
 	    if (OutletForced(A, T, i)) {
 	       if (a == 0) {
 		  (void) printf("\nEdge %2d: ", i);
@@ -610,12 +673,12 @@ char str[];	/* input line */
    for (i = 1; i <= x[0]; i++) {
       if (print >= PRTPAI)
 	 (void) printf("\n-->Checking hubcap member (%d,%d,%d)\n", x[i], y[i], v[i]);
-      for (j = 0; j < nouts; j++) {
+      for (j = 0; j < global_nouts; j++) {
 	 posout[j].x = x[i];
 	 s[j] = 0;
       }
       if (x[i] != y[i])
-	 for (; j < 2 * nouts; j++) {
+	 for (; j < 2 * global_nouts; j++) {
 	    posout[j].x = y[i];
 	    s[j] = 0;
 	 }
@@ -681,8 +744,13 @@ tp_axle *A;
    }
    /* check reducibility */
    if (forcedch > maxch) {
-      if (Reduce(A, lineno, print >= PRTALL ? 1 : 0) != 1)
-	 Error("Incorrect hubcap upper bound", lineno);
+      if (Reduce(A, lineno, print >= PRTALL ? 1 : 0) != 1) {
+         if (deepen_mode && TryDeepenLeaf(A, max_deepen_depth, lineno)) {
+            /* Closed by deepening */
+         } else {
+            Error("Incorrect hubcap upper bound", lineno);
+         }
+      }
       if (print >= PRTPAI && print < PRTALL)
 	 Indent(depth, "Reducible. Case done.\n");
       return;
@@ -964,8 +1032,41 @@ tp_axle *A;
       }
       Getadjmat(B, adjmat);
       GetEdgelist(B, edgelist);
+
+      if (matrix_mode && lineno > 0) {
+         int found_any = 0;
+         (void) printf("LEAF_MATRIX %d:", lineno);
+         for (a = 5; a <= 11; a++) {
+            for (b = 5; b <= 8 && b <= a; b++) {
+               if (edgelist[a][b][0] == 0) continue;
+               b_cnt = bucket_count[a][b];
+               if (b_cnt == 0) continue;
+               b_list = bucket_confs[a][b];
+               for (k = 0; k < b_cnt; k++) {
+                  h = b_list[k];
+                  if (forbidden_conf[h]) continue;
+                  if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
+                     (void) printf(" %d", h + 1);
+                     found_any = 1;
+                  }
+               }
+            }
+         }
+         for (k = 0; k < unbucketed_count; k++) {
+            h = unbucketed_confs[k];
+            if (forbidden_conf[h]) continue;
+            if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
+               (void) printf(" %d", h + 1);
+               found_any = 1;
+            }
+         }
+         (void) printf("\n");
+         (void) fflush(stdout);
+         return (found_any ? 1 : 0);
+      }
+
       static FILE *cov_file = NULL;
-      if (track_mode && cov_file == NULL) cov_file = fopen("rsst_coverage.txt", "a");
+      if (track_mode && lineno > 0 && cov_file == NULL) cov_file = fopen("rsst_coverage.txt", "a");
       int first_h = -1;
       static tp_vertices first_image;
       for (a = 5; a <= 11; a++) {
@@ -976,12 +1077,13 @@ tp_axle *A;
             b_list = bucket_confs[a][b];
             for (k = 0; k < b_cnt; k++) {
                h = b_list[k];
+               if (forbidden_conf[h]) continue;
                if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
                   if (first_h == -1 || h < first_h) {
                      first_h = h;
                      for (j = 0; j < CARTVERT; j++) first_image[j] = image[j];
                   }
-                  if (track_mode && cov_file) fprintf(cov_file, "%d ", h + 1);
+                  if (track_mode && lineno > 0 && cov_file) fprintf(cov_file, "%d ", h + 1);
                }
             }
          }
@@ -989,19 +1091,20 @@ tp_axle *A;
 
       for (k = 0; k < unbucketed_count; k++) {
          h = unbucketed_confs[k];
+         if (forbidden_conf[h]) continue;
          if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
             if (first_h == -1 || h < first_h) {
                first_h = h;
                for (j = 0; j < CARTVERT; j++) first_image[j] = image[j];
             }
-            if (track_mode && cov_file) fprintf(cov_file, "%d ", h + 1);
+            if (track_mode && lineno > 0 && cov_file) fprintf(cov_file, "%d ", h + 1);
          }
       }
       if (first_h != -1) {
-         if (track_mode && cov_file) fprintf(cov_file, "\n");
+         if (track_mode && lineno > 0 && cov_file) fprintf(cov_file, "\n");
          h = first_h;
          for (j = 0; j < CARTVERT; j++) image[j] = first_image[j];
-         if (track_mode) {
+         if (track_mode && lineno > 0) {
             used_confs[h]++;
             total_reduces++;
             printf("USED_CONFIG_ID: %d\n", h + 1);
@@ -1055,6 +1158,92 @@ tp_axle *A;
       (void) printf("All possibilities for lower degrees tested\n");
    return (1);
 }/* Reduce */
+
+/*********************************************************************
+        IsChargeNonPositive
+ Computes the upper bound of the charge of the central hub 0.
+ Returns 1 if max_charge <= 0, 0 otherwise.
+*********************************************************************/
+int
+IsChargeNonPositive(A)
+tp_axle *A;
+{
+   int deg, forcedch, allowedch, x, i;
+   tp_outlet *T;
+
+   deg = A->low[0];
+   if (deg < 5 || global_nouts == 0)
+      return (0);
+
+   forcedch = allowedch = 0;
+   for (x = 1; x <= deg; x++) {
+      for (i = 0, T = global_outlets; i < global_nouts; i++, T++) {
+         if (OutletForced(A, T, x)) {
+            forcedch += T->value;
+         } else if (OutletPermitted(A, T, x)) {
+            if (T->value > 0)
+               allowedch += T->value;
+         }
+      }
+   }
+
+   /* Base charge of vertex of degree deg is 10 * (6 - deg) */
+   return (10 * (6 - deg) + forcedch + allowedch <= 0);
+}/* IsChargeNonPositive */
+
+/*********************************************************************
+        TryDeepenLeaf
+ Recursively attempts to close axle A within rem_depth extra levels
+ by splitting on spokes (1..d) or hats (d+1..2d).
+ Returns 1 if ALL sub-branches close, 0 otherwise.
+*********************************************************************/
+int
+TryDeepenLeaf(A, rem_depth, lineno)
+tp_axle *A;
+int rem_depth, lineno;
+{
+   int v, split_deg;
+   int hub_deg = A->low[0];
+
+   /* 1. Check if axle already reduces using allowed configurations */
+   if (Reduce(A, 0, 0) == 1) {
+      return (1);
+   }
+
+   /* 2. If reached maximum extra depth, fail on this branch */
+   if (rem_depth <= 0) {
+      return (0);
+   }
+
+   /* 3. Try to branch on an eligible vertex v:
+    * First spokes (1 .. hub_deg), then hats (hub_deg+1 .. 2*hub_deg)
+    */
+   for (v = 1; v <= 2 * hub_deg; v++) {
+      if (A->low[v] < A->upp[v]) {
+         for (split_deg = A->low[v] + 1; split_deg <= A->upp[v] && split_deg <= 9; split_deg++) {
+            tp_axle LeftBranch = *A;
+            tp_axle RightBranch = *A;
+
+            LeftBranch.upp[v] = split_deg - 1;
+            RightBranch.low[v] = split_deg;
+
+            /* Check LeftBranch */
+            int left_ok = IsChargeNonPositive(&LeftBranch) ||
+                          TryDeepenLeaf(&LeftBranch, rem_depth - 1, lineno);
+            if (!left_ok)
+               continue;
+
+            /* Check RightBranch */
+            int right_ok = IsChargeNonPositive(&RightBranch) ||
+                           TryDeepenLeaf(&RightBranch, rem_depth - 1, lineno);
+            if (right_ok) {
+               return (1);
+            }
+         }
+      }
+   }
+   return (0);
+}/* TryDeepenLeaf */
 
 /*********************************************************************
             CheckIso
