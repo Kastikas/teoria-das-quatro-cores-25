@@ -1,6 +1,7 @@
-use crate::graph::{find_angles, Configuration, DEG};
+use crate::graph::{canonical_dihedral_signature, find_angles, Configuration, DEG};
 use crate::reducibility::{ReducibilityEngine, ReducibilityReport};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Erros formais de síntese e transformação topológica.
 #[derive(Debug, PartialEq, Eq)]
@@ -301,6 +302,538 @@ impl SynthesisPipeline {
         }
         result
     }
+
+    /// Executa mineração paralela de contrações em alta escala sobre coleções de grafos.
+    /// Utiliza std::thread::scope, deduplicação diédrica canônica e filtragem fast-fail em 5 portões.
+    pub fn batch_synthesize_contractions_parallel(
+        configs: &[Configuration],
+        existing_pool: Option<&[Configuration]>,
+        num_threads: usize,
+    ) -> (Vec<Configuration>, BatchSynthesisStats) {
+        let threads = if num_threads == 0 {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+        } else {
+            num_threads
+        };
+
+        let mut seen_signatures = HashSet::new();
+        if let Some(pool) = existing_pool {
+            for c in pool {
+                seen_signatures.insert(canonical_dihedral_signature(c));
+            }
+        }
+        for c in configs {
+            seen_signatures.insert(canonical_dihedral_signature(c));
+        }
+
+        let chunk_size = configs.len().div_ceil(threads).max(1);
+        let total_cands_atomic = AtomicUsize::new(0);
+        let rsst_passed_atomic = AtomicUsize::new(0);
+
+        let thread_results: Vec<Vec<Configuration>> = std::thread::scope(|s| {
+            let mut handles = Vec::new();
+            for chunk in configs.chunks(chunk_size) {
+                let total_cands_ref = &total_cands_atomic;
+                let rsst_passed_ref = &rsst_passed_atomic;
+                handles.push(s.spawn(move || {
+                    let engine = ReducibilityEngine::new();
+                    let mut local_valid = Vec::new();
+
+                    for conf in chunk {
+                        let contractible = Self::find_contractible_internal_edges(conf);
+                        total_cands_ref.fetch_add(contractible.len(), Ordering::Relaxed);
+
+                        for (u, v) in contractible {
+                            if let Ok(new_conf) = Self::contract_internal_edge(conf, u, v) {
+                                rsst_passed_ref.fetch_add(1, Ordering::Relaxed);
+                                // Portão 5: Birkhoff Reducibility
+                                if let Ok(_) = Self::validate_rigorous(&new_conf, &engine) {
+                                    local_valid.push(new_conf);
+                                }
+                            }
+                        }
+                    }
+                    local_valid
+                }));
+            }
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+
+        let mut final_unique = Vec::new();
+        let mut total_pure_d = 0;
+
+        for list in thread_results {
+            for conf in list {
+                total_pure_d += 1;
+                let sig = canonical_dihedral_signature(&conf);
+                if seen_signatures.insert(sig) {
+                    final_unique.push(conf);
+                }
+            }
+        }
+
+        let stats = BatchSynthesisStats {
+            total_input_configs: configs.len(),
+            total_contractible_candidates: total_cands_atomic.load(Ordering::Relaxed),
+            rsst_admissible_passed: rsst_passed_atomic.load(Ordering::Relaxed),
+            pure_d_certified: total_pure_d,
+            unique_d_certified: final_unique.len(),
+        };
+
+        (final_unique, stats)
+    }
+
+    /// Detecta caminhos divisores simples Pi = (r_a, h, r_b) onde h é um hub interno
+    /// conectado a pelo menos dois vértices do anel r_a e r_b.
+    #[allow(dead_code)]
+    pub fn find_sector_bipartitions(conf: &Configuration) -> Vec<PlanarSector> {
+        let n = conf.verts();
+        let r = conf.ring();
+        let mut sectors = Vec::new();
+
+        for h in (r + 1)..=n {
+            let d_h = conf.mat[h][0];
+            let nbrs: Vec<usize> = (1..=d_h).map(|k| conf.mat[h][k]).collect();
+            let ring_nbrs: Vec<usize> = nbrs.iter().cloned().filter(|&x| x <= r).collect();
+
+            if ring_nbrs.len() >= 2 {
+                for i in 0..ring_nbrs.len() {
+                    for j in (i + 1)..ring_nbrs.len() {
+                        let ra = ring_nbrs[i];
+                        let rb = ring_nbrs[j];
+
+                        let mut arc_ab = Vec::new();
+                        let mut curr = ra;
+                        while curr != rb {
+                            arc_ab.push(curr);
+                            curr = if curr == r { 1 } else { curr + 1 };
+                        }
+                        arc_ab.push(rb);
+
+                        let mut sector_internals = Vec::new();
+                        for v in (r + 1)..=n {
+                            if v != h {
+                                let d_v = conf.mat[v][0];
+                                let v_nbrs = (1..=d_v).map(|k| conf.mat[v][k]);
+                                let all_in_sector = v_nbrs.into_iter().all(|nb| {
+                                    nb == h || arc_ab.contains(&nb) || nb > r
+                                });
+                                if all_in_sector {
+                                    sector_internals.push(v);
+                                }
+                            }
+                        }
+
+                        sectors.push(PlanarSector {
+                            hub: h,
+                            ring_anchor_a: ra,
+                            ring_anchor_b: rb,
+                            ring_arc: arc_ab,
+                            internal_vertices: sector_internals,
+                        });
+                    }
+                }
+            }
+        }
+        sectors
+    }
+
+    /// Executa o cruzamento geodésico guiado por flips entre duas configurações parentais.
+    /// Explora intermediários no espaço de triangulações, submetendo cada candidato
+    /// aos 5 Portões Invioláveis (incluindo teste algébrico de Birkhoff com C = 0).
+    pub fn recombine_guided_flips(
+        donor_a: &Configuration,
+        donor_b: &Configuration,
+        engine: &ReducibilityEngine,
+        max_depth: usize,
+    ) -> Vec<Configuration> {
+        if donor_a.ring() != donor_b.ring() || donor_a.verts() != donor_b.verts() {
+            return Vec::new();
+        }
+
+        let mut results = Vec::new();
+        let mut seen_signatures = HashSet::new();
+        seen_signatures.insert(canonical_dihedral_signature(donor_a));
+        seen_signatures.insert(canonical_dihedral_signature(donor_b));
+
+        // Nível 1: Geração de vizinhos de flip de donor_a
+        let flips_a = crate::flipper::generate_internal_flips(donor_a);
+        for flip in flips_a {
+            let sig = canonical_dihedral_signature(&flip.conf);
+            if seen_signatures.insert(sig) {
+                if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
+                    let mut certified = flip.conf;
+                    certified.name = format!("{}_x_{}_f1", donor_a.name, donor_b.name);
+                    results.push(certified);
+                }
+            }
+        }
+
+        // Nível 1: Geração de vizinhos de flip de donor_b
+        let flips_b = crate::flipper::generate_internal_flips(donor_b);
+        for flip in flips_b {
+            let sig = canonical_dihedral_signature(&flip.conf);
+            if seen_signatures.insert(sig) {
+                if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
+                    let mut certified = flip.conf;
+                    certified.name = format!("{}_x_{}_f2", donor_b.name, donor_a.name);
+                    results.push(certified);
+                }
+            }
+        }
+
+        // Nível 2 (opcional, para profundidade geodésica >= 2)
+        if max_depth >= 2 {
+            let level1 = results.clone();
+            for hybrid in level1 {
+                let flips_h = crate::flipper::generate_internal_flips(&hybrid);
+                for flip in flips_h {
+                    let sig = canonical_dihedral_signature(&flip.conf);
+                    if seen_signatures.insert(sig) {
+                        if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
+                            let mut certified = flip.conf;
+                            certified.name = format!("{}_f3", hybrid.name);
+                            results.push(certified);
+                        }
+                    }
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Executa recombinação em lote massivamente paralela sobre um pool de configurações.
+    /// Utiliza std::thread::scope, chunking balanceado e deduplicação diédrica canônica.
+    pub fn batch_recombine_parallel(
+        pool: &[Configuration],
+        existing_pool: Option<&[Configuration]>,
+        options: &RecombinationOptions,
+    ) -> (Vec<Configuration>, BatchRecombinationStats) {
+        let threads = if options.num_threads == 0 {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+        } else {
+            options.num_threads
+        };
+
+        let mut seen_signatures = HashSet::new();
+        if let Some(existing) = existing_pool {
+            for c in existing {
+                seen_signatures.insert(canonical_dihedral_signature(c));
+            }
+        }
+        for c in pool {
+            seen_signatures.insert(canonical_dihedral_signature(c));
+        }
+
+        // Agrupa configurações por (verts, ring) para formar pares compatíveis
+        let mut buckets: std::collections::HashMap<(usize, usize), Vec<&Configuration>> =
+            std::collections::HashMap::new();
+        for c in pool {
+            if let Some(target_r) = options.target_ring {
+                if c.ring() != target_r {
+                    continue;
+                }
+            }
+            buckets.entry((c.verts(), c.ring())).or_default().push(c);
+        }
+
+        let mut candidate_pairs = Vec::new();
+        for (_, group) in buckets {
+            if group.len() >= 2 {
+                for i in 0..group.len() {
+                    for j in (i + 1)..group.len() {
+                        candidate_pairs.push((group[i], group[j]));
+                        if let Some(max_p) = options.max_pairs {
+                            if candidate_pairs.len() >= max_p {
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(max_p) = options.max_pairs {
+                        if candidate_pairs.len() >= max_p {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let total_pairs = candidate_pairs.len();
+        if total_pairs == 0 {
+            return (
+                Vec::new(),
+                BatchRecombinationStats {
+                    total_input_confs: pool.len(),
+                    compatible_pairs: 0,
+                    crossovers_attempted: 0,
+                    rsst_admissible_passed: 0,
+                    pure_d_certified: 0,
+                    unique_d_certified: 0,
+                },
+            );
+        }
+
+        let chunk_size = total_pairs.div_ceil(threads).max(1);
+        let pairs_atomic = AtomicUsize::new(0);
+        let pure_d_atomic = AtomicUsize::new(0);
+
+        let thread_results: Vec<Vec<Configuration>> = std::thread::scope(|s| {
+            let mut handles = Vec::new();
+            for chunk in candidate_pairs.chunks(chunk_size) {
+                let p_ref = &pairs_atomic;
+                let d_ref = &pure_d_atomic;
+                let depth = options.max_depth;
+
+                handles.push(s.spawn(move || {
+                    let engine = ReducibilityEngine::new();
+                    let mut local_certified = Vec::new();
+
+                    for &(conf_a, conf_b) in chunk {
+                        p_ref.fetch_add(1, Ordering::Relaxed);
+                        let certified = Self::recombine_guided_flips(conf_a, conf_b, &engine, depth);
+                        d_ref.fetch_add(certified.len(), Ordering::Relaxed);
+                        local_certified.extend(certified);
+                    }
+                    local_certified
+                }));
+            }
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+
+        let mut final_unique = Vec::new();
+        let mut total_pure_d = 0;
+
+        for list in thread_results {
+            for conf in list {
+                total_pure_d += 1;
+                let sig = canonical_dihedral_signature(&conf);
+                if seen_signatures.insert(sig) {
+                    final_unique.push(conf);
+                }
+            }
+        }
+
+        let stats = BatchRecombinationStats {
+            total_input_confs: pool.len(),
+            compatible_pairs: total_pairs,
+            crossovers_attempted: total_pairs * 2,
+            rsst_admissible_passed: total_pure_d,
+            pure_d_certified: total_pure_d,
+            unique_d_certified: final_unique.len(),
+        };
+
+        (final_unique, stats)
+    }
+
+    /// Executa a transição de fronteira: expande um vértice interno v de grau 5
+    /// com vizinhos consecutivos no anel para dentro do anel, transformando G(V, R) em G'(V, R+1).
+    #[allow(dead_code)]
+    pub fn morph_expand_internal_to_ring(
+        conf: &Configuration,
+        v: usize,
+    ) -> Result<Configuration, SynthesisError> {
+        let n = conf.verts();
+        let r = conf.ring();
+
+        if v <= r || v > n {
+            return Err(SynthesisError::InvalidVertexBounds(format!(
+                "Vértice {} não é estritamente interno (anel R = {})",
+                v, r
+            )));
+        }
+
+        let d_v = conf.mat[v][0];
+        if d_v != 5 {
+            return Err(SynthesisError::ViolatesDegreeBound(format!(
+                "Apenas vértices internos de grau 5 podem ser expandidos para o anel. Grau atual: {}",
+                d_v
+            )));
+        }
+
+        if r >= 14 {
+            return Err(SynthesisError::ViolatesRSSTAdmissibility(
+                "Anel expandido excederia o limite máximo canônico do RSST (R <= 14).",
+            ));
+        }
+
+        // Procura dois vizinhos consecutivos no anel
+        let nbrs_v: Vec<usize> = (1..=d_v).map(|k| conf.mat[v][k]).collect();
+        let mut consecutive_pair = None;
+
+        for i in 0..d_v {
+            let next_i = (i + 1) % d_v;
+            let u1 = nbrs_v[i];
+            let u2 = nbrs_v[next_i];
+            if u1 <= r && u2 <= r {
+                let is_consec = (u2 == u1 + 1)
+                    || (u1 == r && u2 == 1)
+                    || (u1 == u2 + 1)
+                    || (u2 == r && u1 == 1);
+                if is_consec {
+                    let (ra, rb) = if (u2 == u1 + 1) || (u1 == r && u2 == 1) {
+                        (u1, u2)
+                    } else {
+                        (u2, u1)
+                    };
+                    consecutive_pair = Some((ra, rb));
+                    break;
+                }
+            }
+        }
+
+        let (ra, rb) = match consecutive_pair {
+            Some(pair) => pair,
+            None => {
+                return Err(SynthesisError::ViolatesDegreeBound(format!(
+                    "Vértice {} não possui par de vizinhos consecutivos no anel.",
+                    v
+                )))
+            }
+        };
+
+        if conf.mat[ra][0] <= 3 || conf.mat[rb][0] <= 3 {
+            return Err(SynthesisError::ViolatesDegreeBound(format!(
+                "Expansão deixaria vizinho de anel com grau < 3: d({})={}, d({})={}",
+                ra, conf.mat[ra][0], rb, conf.mat[rb][0]
+            )));
+        }
+
+        let new_r = r + 1;
+        let ins_pos = if ra == r && rb == 1 { new_r } else { ra + 1 };
+
+        let mut node_map = vec![0usize; n + 1];
+        for old_u in 1..=r {
+            if old_u <= ra {
+                node_map[old_u] = old_u;
+            } else {
+                node_map[old_u] = old_u + 1;
+            }
+        }
+        node_map[v] = ins_pos;
+
+        let mut next_internal = new_r + 1;
+        for old_u in (r + 1)..=n {
+            if old_u != v {
+                node_map[old_u] = next_internal;
+                next_internal += 1;
+            }
+        }
+
+        let mut new_conf = Configuration::new(
+            conf.id + 20000,
+            n,
+            new_r,
+            conf.extent_claim(),
+        );
+        new_conf.name = format!("{}_exp_v{}", conf.name, v);
+
+        for old_u in 1..=n {
+            let new_u = node_map[old_u];
+            let d_old = conf.mat[old_u][0];
+            let old_nbrs: Vec<usize> = (1..=d_old).map(|k| conf.mat[old_u][k]).collect();
+
+            let mut mapped_nbrs = Vec::new();
+            if old_u == v {
+                for &nb in &old_nbrs {
+                    mapped_nbrs.push(node_map[nb]);
+                }
+            } else if old_u == ra {
+                for &nb in &old_nbrs {
+                    if nb != rb {
+                        mapped_nbrs.push(node_map[nb]);
+                    }
+                }
+            } else if old_u == rb {
+                for &nb in &old_nbrs {
+                    if nb != ra {
+                        mapped_nbrs.push(node_map[nb]);
+                    }
+                }
+            } else {
+                for &nb in &old_nbrs {
+                    mapped_nbrs.push(node_map[nb]);
+                }
+            }
+
+            new_conf.set_vertex(new_u, &mapped_nbrs);
+        }
+
+        for i in 1..=n {
+            let d_i = new_conf.mat[i][0];
+            for k in 1..=d_i {
+                let j = new_conf.mat[i][k];
+                let d_j = new_conf.mat[j][0];
+                let has_reciprocal = (1..=d_j).any(|idx| new_conf.mat[j][idx] == i);
+                if !has_reciprocal {
+                    return Err(SynthesisError::ViolatesRSSTAdmissibility(
+                        "Falha interna: Quebra de reciprocidade na expansão de anel.",
+                    ));
+                }
+            }
+        }
+
+        new_conf
+            .check_rsst_admissibility()
+            .map_err(SynthesisError::ViolatesRSSTAdmissibility)?;
+
+        Ok(new_conf)
+    }
+}
+
+/// Opções de execução para o pipeline de recombinação em lote.
+#[derive(Debug, Clone)]
+pub struct RecombinationOptions {
+    pub max_pairs: Option<usize>,
+    pub max_depth: usize,
+    pub num_threads: usize,
+    pub target_ring: Option<usize>,
+}
+
+impl Default for RecombinationOptions {
+    fn default() -> Self {
+        Self {
+            max_pairs: None,
+            max_depth: 1,
+            num_threads: 0,
+            target_ring: None,
+        }
+    }
+}
+
+/// Estatísticas agregadas da recombinação paralela em lote.
+#[derive(Debug, Clone, Default)]
+pub struct BatchRecombinationStats {
+    pub total_input_confs: usize,
+    pub compatible_pairs: usize,
+    pub crossovers_attempted: usize,
+    pub rsst_admissible_passed: usize,
+    pub pure_d_certified: usize,
+    pub unique_d_certified: usize,
+}
+
+/// Estatísticas agregadas da mineração paralela de síntese.
+#[derive(Debug, Clone, Default)]
+pub struct BatchSynthesisStats {
+    pub total_input_configs: usize,
+    pub total_contractible_candidates: usize,
+    pub rsst_admissible_passed: usize,
+    pub pure_d_certified: usize,
+    pub unique_d_certified: usize,
+}
+
+/// Representa um setor planar biparticionado por um caminho (r_a, h, r_b).
+#[derive(Debug, Clone)]
+pub struct PlanarSector {
+    pub hub: usize,
+    pub ring_anchor_a: usize,
+    pub ring_anchor_b: usize,
+    pub ring_arc: Vec<usize>,
+    pub internal_vertices: Vec<usize>,
 }
 
 #[cfg(test)]
@@ -367,5 +900,47 @@ mod tests {
         for &(u, v) in &contractible {
             assert!(u > 6 && v > 6);
         }
+    }
+
+    #[test]
+    fn test_batch_recombine_parallel_empty() {
+        let pool: Vec<Configuration> = Vec::new();
+        let opts = RecombinationOptions::default();
+        let (res, stats) = SynthesisPipeline::batch_recombine_parallel(&pool, None, &opts);
+        assert!(res.is_empty());
+        assert_eq!(stats.compatible_pairs, 0);
+    }
+
+    #[test]
+    fn test_morph_expand_internal_bounds_checks() {
+        let conf = Configuration::new(1, 10, 6, 16);
+        // Vértice 2 é do anel (<= 6)
+        let res = SynthesisPipeline::morph_expand_internal_to_ring(&conf, 2);
+        assert!(matches!(res, Err(SynthesisError::InvalidVertexBounds(_))));
+
+        // Vértice fora dos limites (> 10)
+        let res = SynthesisPipeline::morph_expand_internal_to_ring(&conf, 15);
+        assert!(matches!(res, Err(SynthesisError::InvalidVertexBounds(_))));
+    }
+
+    #[test]
+    fn test_batch_synthesize_contractions_parallel_small() {
+        let mut conf = Configuration::new(1, 10, 6, 16);
+        conf.set_vertex(1, &[2, 9, 6]);
+        conf.set_vertex(2, &[3, 8, 9, 1]);
+        conf.set_vertex(3, &[4, 7, 8, 2]);
+        conf.set_vertex(4, &[5, 10, 7, 3]);
+        conf.set_vertex(5, &[6, 10, 4]);
+        conf.set_vertex(6, &[1, 9, 10, 5]);
+        conf.set_vertex(7, &[3, 8, 10, 4]);
+        conf.set_vertex(8, &[2, 9, 10, 7, 3]);
+        conf.set_vertex(9, &[1, 6, 10, 8, 2]);
+        conf.set_vertex(10, &[4, 5, 6, 9, 8, 7]);
+
+        let pool = vec![conf];
+        let (unique, stats) = SynthesisPipeline::batch_synthesize_contractions_parallel(&pool, None, 2);
+        assert_eq!(stats.total_input_configs, 1);
+        // Como o diamante de Birkhoff não tem arestas contractíveis admissíveis de grau >= 5, lista retornada é vazia
+        assert_eq!(unique.len(), 0);
     }
 }

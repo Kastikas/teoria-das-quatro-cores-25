@@ -9,7 +9,7 @@ mod synthesizer;
 use analyzer::{LeafDiagnosis, MotifAnalysis};
 use graph::{find_angles, read_configurations, Configuration};
 use reducibility::ReducibilityEngine;
-use synthesizer::SynthesisPipeline;
+use synthesizer::{RecombinationOptions, SynthesisPipeline};
 use std::env;
 use std::fs::File;
 use std::io::Write;
@@ -1398,6 +1398,90 @@ fn main() {
         return;
     }
 
+    if args.len() > 1 && args[1] == "recombine" {
+        let conf_file = if args.len() > 2 {
+            &args[2]
+        } else {
+            "data/pool/strictly_certified_candidates_pool.conf"
+        };
+        let out_file = if args.len() > 3 {
+            &args[3]
+        } else {
+            "recombined_candidates.conf"
+        };
+
+        let mut max_pairs = None;
+        let mut max_depth = 1;
+        let mut target_ring = None;
+        let mut threads = 0;
+
+        let mut idx = 4;
+        while idx < args.len() {
+            if args[idx] == "--pairs" && idx + 1 < args.len() {
+                max_pairs = args[idx + 1].parse().ok();
+                idx += 2;
+            } else if args[idx] == "--depth" && idx + 1 < args.len() {
+                max_depth = args[idx + 1].parse().unwrap_or(1);
+                idx += 2;
+            } else if args[idx] == "--ring" && idx + 1 < args.len() {
+                target_ring = args[idx + 1].parse().ok();
+                idx += 2;
+            } else if args[idx] == "--threads" && idx + 1 < args.len() {
+                threads = args[idx + 1].parse().unwrap_or(0);
+                idx += 2;
+            } else {
+                idx += 1;
+            }
+        }
+
+        let configs = match read_configurations(conf_file) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Erro ao ler {}: {}", conf_file, e);
+                return;
+            }
+        };
+
+        println!("================================================================================");
+        println!("PIPELINE DE RECOMBINAÇÃO TOPOLÓGICA RIGOROSA (CRUZAMENTO GEODÉSICO DE GRAFOS)");
+        println!("================================================================================");
+        println!("Pool de entrada: {} configurações de {}", configs.len(), conf_file);
+        println!("Profundidade geodésica: {}, Limite de pares: {:?}", max_depth, max_pairs);
+        if let Some(r) = target_ring {
+            println!("Filtro de Anel Alvo: R = {}", r);
+        }
+
+        let opts = RecombinationOptions {
+            max_pairs,
+            max_depth,
+            num_threads: threads,
+            target_ring,
+        };
+
+        let t0 = Instant::now();
+        let (certified_unique, stats) = SynthesisPipeline::batch_recombine_parallel(&configs, None, &opts);
+        let elapsed = t0.elapsed();
+
+        println!("\n--- Relatório de Recombinação em Lote ---");
+        println!("Total de configurações no pool:         {}", stats.total_input_confs);
+        println!("Pares compatíveis identificados:        {}", stats.compatible_pairs);
+        println!("Tentativas de cruzamento topológico:    {}", stats.crossovers_attempted);
+        println!("Grafos certificados D-Redutíveis Puros: {}", stats.pure_d_certified);
+        println!("Grafos ÚNICOS (deduplicação diédrica):  {}", stats.unique_d_certified);
+        println!("Tempo total de processamento:           {:.3?}", elapsed);
+
+        if !certified_unique.is_empty() {
+            let mut out = File::create(out_file).expect("Erro ao criar arquivo de saída");
+            for sc in &certified_unique {
+                let txt = format_configuration(sc);
+                out.write_all(txt.as_bytes()).unwrap();
+            }
+            println!("Salvas {} novas configurações certificadas em {}", certified_unique.len(), out_file);
+        }
+        println!("================================================================================\n");
+        return;
+    }
+
     if args.len() > 1 && args[1] == "synthesize-contractions" {
         let conf_file = if args.len() > 2 {
             &args[2]
@@ -1449,53 +1533,66 @@ fn main() {
             conf_file
         );
 
-        let mut total_contractible_edges = 0;
-        let mut total_rsst_admissible = 0;
-        let mut total_pure_d_reducible = 0;
-        let mut successful_confs = Vec::new();
+        let (successful_confs, total_contractible_edges, total_rsst_admissible, total_pure_d_reducible) =
+            if target_idx.is_none() {
+                println!("Executando mineração paralela massiva de contrações com deduplicação diédrica...");
+                let t0 = Instant::now();
+                let (unique, stats) =
+                    SynthesisPipeline::batch_synthesize_contractions_parallel(&configs, None, 0);
+                println!("Mineração paralela concluída em {:.3?}", t0.elapsed());
+                (
+                    unique,
+                    stats.total_contractible_candidates,
+                    stats.rsst_admissible_passed,
+                    stats.pure_d_certified,
+                )
+            } else {
+                let mut total_contractible = 0;
+                let mut total_rsst = 0;
+                let mut total_pure_d = 0;
+                let mut successful = Vec::new();
 
-        for conf in selected {
-            let contractible = SynthesisPipeline::find_contractible_internal_edges(conf);
-            total_contractible_edges += contractible.len();
+                for conf in selected {
+                    let contractible = SynthesisPipeline::find_contractible_internal_edges(conf);
+                    total_contractible += contractible.len();
 
-            for (u, v) in contractible {
-                match SynthesisPipeline::contract_internal_edge(conf, u, v) {
-                    Ok(new_conf) => {
-                        total_rsst_admissible += 1;
-                        match SynthesisPipeline::validate_rigorous(&new_conf, &engine) {
-                            Ok(report) => {
-                                total_pure_d_reducible += 1;
-                                println!(
-                                    "  [SUCESSO D-REDUTÍVEL] {}: contração ({}, {}) -> Novo V={}, Novo I={} (Extensões: {})",
-                                    new_conf.name,
-                                    u,
-                                    v,
-                                    new_conf.verts(),
-                                    new_conf.verts() - new_conf.ring(),
-                                    report.extending_colorings
-                                );
-                                successful_confs.push(new_conf);
-                            }
-                            Err(e) => {
-                                if target_idx.is_some() {
-                                    println!("  [REJEITADO BIRKHOFF] contração ({}, {}): {}", u, v, e);
+                    for (u, v) in contractible {
+                        match SynthesisPipeline::contract_internal_edge(conf, u, v) {
+                            Ok(new_conf) => {
+                                total_rsst += 1;
+                                match SynthesisPipeline::validate_rigorous(&new_conf, &engine) {
+                                    Ok(report) => {
+                                        total_pure_d += 1;
+                                        println!(
+                                            "  [SUCESSO D-REDUTÍVEL] {}: contração ({}, {}) -> Novo V={}, Novo I={} (Extensões: {})",
+                                            new_conf.name,
+                                            u,
+                                            v,
+                                            new_conf.verts(),
+                                            new_conf.verts() - new_conf.ring(),
+                                            report.extending_colorings
+                                        );
+                                        successful.push(new_conf);
+                                    }
+                                    Err(e) => {
+                                        println!("  [REJEITADO BIRKHOFF] contração ({}, {}): {}", u, v, e);
+                                    }
                                 }
                             }
-                        }
-                    }
-                    Err(e) => {
-                        if target_idx.is_some() {
-                            println!("  [REJEITADO RSST] contração ({}, {}): {}", u, v, e);
+                            Err(e) => {
+                                println!("  [REJEITADO RSST] contração ({}, {}): {}", u, v, e);
+                            }
                         }
                     }
                 }
-            }
-        }
+                (successful, total_contractible, total_rsst, total_pure_d)
+            };
 
         println!("\n--- Relatório Final de Síntese ---");
         println!("Arestas candidatas verificadas:          {}", total_contractible_edges);
         println!("Grafos aprovados na Admissibilidade RSST: {}", total_rsst_admissible);
         println!("Grafos CERTIFICADOS D-Redutíveis Puros:  {}", total_pure_d_reducible);
+        println!("Grafos ÚNICOS (deduplicação diédrica):  {}", successful_confs.len());
 
         if !successful_confs.is_empty() {
             let mut out = File::create(out_file).expect("Erro ao criar arquivo de saída");
