@@ -29,6 +29,19 @@ int forbidden_conf[10000];
 int num_forbidden = 0;
 long leaf_counter = 0;
 
+#define MAX_PATCH_LINES 128
+#define MAX_PATCHES 10000
+
+typedef struct {
+   int lineno;
+   int num_lines;
+   char lines[MAX_PATCH_LINES][128];
+} tp_leaf_patch;
+
+static tp_leaf_patch recorded_patches[MAX_PATCHES];
+static int num_recorded_patches = 0;
+static char patch_export_file[256] = "";
+
 /* constants */
 #define VERTS      40	/* max number of vertices in a free completion + 1 */ // jps
 #define DEG        13	/* max degree of a vertex in a free completion + 1 */
@@ -117,7 +130,9 @@ int ReflForced(tp_axle *, tp_outlet *, int);
 void PrintOutlet(int, FILE *, tp_outlet *);
 int Reduce(tp_axle *, int, int);
 int IsChargeNonPositive(tp_axle *);
-int TryDeepenLeaf(tp_axle *, int, int);
+int CheckSingleAxleReducible(tp_axle *);
+int GetBranchableVertices(tp_axle *, int *);
+int TryDeepenLeaf(tp_axle *, int, int, int);
 void CheckIso(tp_confmat, tp_axle *, tp_vertices, int);
 void CopyAxle(tp_axle *, tp_axle *);
 void PrintAxle(tp_axle *);
@@ -149,6 +164,8 @@ int ReflForced();
 void PrintOutlet();
 int Reduce();
 int IsChargeNonPositive();
+int CheckSingleAxleReducible();
+int GetBranchableVertices();
 int TryDeepenLeaf();
 void CheckIso();
 void CopyAxle();
@@ -229,6 +246,16 @@ char *av[];
             (void) fprintf(stderr, "Error: -f requires comma-separated IDs\n");
             exit(1);
          }
+      } else if (strcmp(av[1], "-p") == 0 || strcmp(av[1], "--patch-file") == 0) {
+         if (ac > 2) {
+            (void) strncpy(patch_export_file, av[2], sizeof(patch_export_file) - 1);
+            patch_export_file[sizeof(patch_export_file) - 1] = '\0';
+            ac -= 2;
+            av += 2;
+         } else {
+            (void) fprintf(stderr, "Error: -p requires patch file path\n");
+            exit(1);
+         }
       } else {
          break;
       }
@@ -236,7 +263,7 @@ char *av[];
 
    printmode = prtline = 0;
    if (ac < 4) { // jps
-      (void) fprintf(stderr, "Usage: %s [-t] [-m] [-d <depth>] [-f <id1,id2,...>] <presentation file> <configuration file> <rule file> [<lineno> <print mode>]\n", av[0]);
+      (void) fprintf(stderr, "Usage: %s [-t] [-m] [-d <depth>] [-f <id1,id2,...>] [-p <patch_file>] <presentation file> <configuration file> <rule file> [<lineno> <print mode>]\n", av[0]);
       (void) fprintf(stderr, "If lineno is given and is positive will print details about that line.\n");
       (void) fprintf(stderr, "If lineno is 0 will print details about all lines. ");
       (void) fprintf(stderr, "Print modes are:\n");
@@ -332,7 +359,7 @@ char *av[];
       case 'R':
 	 if (Reduce(A, lineno, print >= PRTBAS ? 1 : 0) != 1) {
              if (deepen_mode) {
-                 if (TryDeepenLeaf(A, max_deepen_depth, lineno)) {
+                 if (TryDeepenLeaf(A, max_deepen_depth, lineno, lev)) {
                      if (print >= PRTBAS) {
                          (void) printf("  Leaf at line %d closed by deepening (depth <= %d)\n", lineno, max_deepen_depth);
                      }
@@ -375,6 +402,39 @@ char *av[];
       Error("`Q.E.D.' expected", lineno);
    (void) printf("%s verified.\n", fname);
    fflush(stdout);
+
+   if (patch_export_file[0] != '\0') {
+      FILE *fp_patch = fopen(patch_export_file, "w");
+      if (fp_patch != NULL) {
+         int p, l;
+         fprintf(fp_patch, "{\n");
+         for (p = 0; p < num_recorded_patches; p++) {
+            fprintf(fp_patch, "  \"%d\": [\n", recorded_patches[p].lineno);
+            for (l = 0; l < recorded_patches[p].num_lines; l++) {
+               char escaped[256];
+               int ei = 0, si;
+               for (si = 0; recorded_patches[p].lines[l][si] != '\0'; si++) {
+                  char c = recorded_patches[p].lines[l][si];
+                  if (c == '\n') {
+                     escaped[ei++] = '\\';
+                     escaped[ei++] = 'n';
+                  } else if (c == '"') {
+                     escaped[ei++] = '\\';
+                     escaped[ei++] = '"';
+                  } else {
+                     escaped[ei++] = c;
+                  }
+               }
+               escaped[ei] = '\0';
+               fprintf(fp_patch, "    \"%s\"%s\n", escaped, (l + 1 < recorded_patches[p].num_lines) ? "," : "");
+            }
+            fprintf(fp_patch, "  ]%s\n", (p + 1 < num_recorded_patches) ? "," : "");
+         }
+         fprintf(fp_patch, "}\n");
+         fclose(fp_patch);
+         printf("[PATCH] %d patches de aprofundamento salvos com sucesso em: %s\n", num_recorded_patches, patch_export_file);
+      }
+   }
 
    if (track_mode) {
        int used_count = 0;
@@ -745,7 +805,7 @@ tp_axle *A;
    /* check reducibility */
    if (forcedch > maxch) {
       if (Reduce(A, lineno, print >= PRTALL ? 1 : 0) != 1) {
-         if (deepen_mode && TryDeepenLeaf(A, max_deepen_depth, lineno)) {
+         if (deepen_mode && TryDeepenLeaf(A, max_deepen_depth, lineno, depth)) {
             /* Closed by deepening */
          } else {
             Error("Incorrect hubcap upper bound", lineno);
@@ -918,6 +978,16 @@ tp_outlet *T;
 }/* PrintOutlet */
 
 
+#define BUCKET_DEG_A 12
+#define BUCKET_DEG_B 9
+static int bucket_count[BUCKET_DEG_A][BUCKET_DEG_B];
+static int *bucket_confs[BUCKET_DEG_A][BUCKET_DEG_B];
+static int unbucketed_count = 0;
+static int *unbucketed_confs = NULL;
+static int noconf = 0;
+static tp_confmat *conf = NULL;
+static tp_question *redquestions = NULL;
+
 /*********************************************************************
             Reduce
  If A==NULL it initializes by allocating memory and reading reducible
@@ -931,20 +1001,11 @@ tp_axle *A;
 {
    int h, i, j, v, redring, redverts;
    int a, b, k, qa, qb, b_cnt, *b_list;
-   static int naxles, noconf;
-   static tp_confmat *conf;
+   static int naxles;
    static tp_edgelist edgelist;
    static tp_adjmat adjmat;
    static tp_vertices image;
    static tp_axle **Astack, *B;
-   static tp_question *redquestions;
-
-#define BUCKET_DEG_A 12
-#define BUCKET_DEG_B 9
-   static int bucket_count[BUCKET_DEG_A][BUCKET_DEG_B];
-   static int *bucket_confs[BUCKET_DEG_A][BUCKET_DEG_B];
-   static int unbucketed_count = 0;
-   static int *unbucketed_confs = NULL;
 
    if (A == NULL) {
       ALLOC(Astack, MAXASTACK, tp_axle *);
@@ -1192,57 +1253,223 @@ tp_axle *A;
 }/* IsChargeNonPositive */
 
 /*********************************************************************
-        TryDeepenLeaf
- Recursively attempts to close axle A within rem_depth extra levels
- by splitting on spokes (1..d) or hats (d+1..2d).
- Returns 1 if ALL sub-branches close, 0 otherwise.
+        CheckSingleAxleReducible
+ Tests reducibility of axle A against all allowed configurations
+ (reconstructing adjacency matrix B and edgelist from scratch).
+ Returns 1 if reducible, 0 otherwise.
 *********************************************************************/
 int
-TryDeepenLeaf(A, rem_depth, lineno)
+CheckSingleAxleReducible(A)
 tp_axle *A;
-int rem_depth, lineno;
 {
-   int v, split_deg;
-   int hub_deg = A->low[0];
+   tp_axle B;
+   tp_adjmat adjmat;
+   tp_edgelist edgelist;
+   tp_vertices image;
+   int a, b, b_cnt, *b_list, k, h;
 
-   /* 1. Check if axle already reduces using allowed configurations */
-   if (Reduce(A, 0, 0) == 1) {
-      return (1);
-   }
+   CopyAxle(&B, A);
+   Getadjmat(&B, adjmat);
+   GetEdgelist(&B, edgelist);
 
-   /* 2. If reached maximum extra depth, fail on this branch */
-   if (rem_depth <= 0) {
-      return (0);
-   }
-
-   /* 3. Try to branch on an eligible vertex v:
-    * First spokes (1 .. hub_deg), then hats (hub_deg+1 .. 2*hub_deg)
-    */
-   for (v = 1; v <= 2 * hub_deg; v++) {
-      if (A->low[v] < A->upp[v]) {
-         for (split_deg = A->low[v] + 1; split_deg <= A->upp[v] && split_deg <= 9; split_deg++) {
-            tp_axle LeftBranch = *A;
-            tp_axle RightBranch = *A;
-
-            LeftBranch.upp[v] = split_deg - 1;
-            RightBranch.low[v] = split_deg;
-
-            /* Check LeftBranch */
-            int left_ok = IsChargeNonPositive(&LeftBranch) ||
-                          TryDeepenLeaf(&LeftBranch, rem_depth - 1, lineno);
-            if (!left_ok)
-               continue;
-
-            /* Check RightBranch */
-            int right_ok = IsChargeNonPositive(&RightBranch) ||
-                           TryDeepenLeaf(&RightBranch, rem_depth - 1, lineno);
-            if (right_ok) {
+   for (a = 5; a <= 11; a++) {
+      for (b = 5; b <= 8 && b <= a; b++) {
+         if (edgelist[a][b][0] == 0) continue;
+         b_cnt = bucket_count[a][b];
+         if (b_cnt == 0) continue;
+         b_list = bucket_confs[a][b];
+         for (k = 0; k < b_cnt; k++) {
+            h = b_list[k];
+            if (forbidden_conf[h]) continue;
+            if (SubConf(adjmat, B.upp, redquestions[h], edgelist, image)) {
                return (1);
             }
          }
       }
    }
+   for (k = 0; k < unbucketed_count; k++) {
+      h = unbucketed_confs[k];
+      if (forbidden_conf[h]) continue;
+      if (SubConf(adjmat, B.upp, redquestions[h], edgelist, image)) {
+         return (1);
+      }
+   }
    return (0);
+}/* CheckSingleAxleReducible */
+
+/*********************************************************************
+        GetBranchableVertices
+ Lists all legal open vertices for Condition branching according to
+ strict RSST Cartwheel grammar (including fan vertices when unlocked).
+ Returns the count of eligible vertices.
+*********************************************************************/
+int
+GetBranchableVertices(A, out_verts)
+tp_axle *A;
+int out_verts[];
+{
+   int d = A->low[0];
+   int count = 0;
+   int i, s;
+
+   /* 1. Spokes (1 .. d) with open interval */
+   for (i = 1; i <= d; i++) {
+      if (A->low[i] < A->upp[i]) {
+         out_verts[count++] = i;
+      }
+   }
+   /* 2. Hats (d+1 .. 2*d) and unlocked Fan vertices */
+   for (s = 1; s <= d; s++) {
+      int hat = d + s;
+      if (A->low[hat] < A->upp[hat]) {
+         out_verts[count++] = hat;
+      }
+      /* Fan vertices exist if and only if spoke s degree is fixed */
+      if (A->low[s] == A->upp[s]) {
+         int deg_s = A->low[s];
+         if (deg_s >= 6 && deg_s <= 8) {
+            int f1 = 2 * d + s;
+            if (A->low[f1] < A->upp[f1]) out_verts[count++] = f1;
+         }
+         if (deg_s >= 7 && deg_s <= 8) {
+            int f2 = 3 * d + s;
+            if (A->low[f2] < A->upp[f2]) out_verts[count++] = f2;
+         }
+         if (deg_s == 8) {
+            int f3 = 4 * d + s;
+            if (A->low[f3] < A->upp[f3]) out_verts[count++] = f3;
+         }
+      }
+   }
+   return (count);
+}/* GetBranchableVertices */
+
+typedef struct tp_deepen_node {
+   int is_leaf;
+   int leaf_type; /* 'R' */
+   int split_v;
+   int split_m;
+   struct tp_deepen_node *left;
+   struct tp_deepen_node *right;
+} tp_deepen_node;
+
+void
+FreeDeepenTree(node)
+tp_deepen_node *node;
+{
+   if (node == NULL) return;
+   FreeDeepenTree(node->left);
+   FreeDeepenTree(node->right);
+   free(node);
+}
+
+tp_deepen_node *
+TryDeepenLeafTree(A, rem_depth)
+tp_axle *A;
+int rem_depth;
+{
+   int candidates[CARTVERT];
+   int n_cands, i, v, m;
+
+   /* 1. Check if axle already reduces or closes by non-positive charge */
+   if (CheckSingleAxleReducible(A) || IsChargeNonPositive(A)) {
+      tp_deepen_node *node = (tp_deepen_node *) malloc(sizeof(tp_deepen_node));
+      node->is_leaf = 1;
+      node->leaf_type = 'R';
+      node->left = node->right = NULL;
+      return node;
+   }
+
+   /* 2. Depth limit reached */
+   if (rem_depth <= 0)
+      return NULL;
+
+   /* 3. Branch on legal eligible vertices */
+   n_cands = GetBranchableVertices(A, candidates);
+   for (i = 0; i < n_cands; i++) {
+      v = candidates[i];
+      for (m = A->low[v] + 1; m <= A->upp[v] && m <= 9; m++) {
+         tp_axle Left = *A;
+         tp_axle Right = *A;
+         tp_deepen_node *right_tree, *left_tree;
+
+         /* Right branch: Condition v m (low[v] = m) */
+         Right.low[v] = m;
+         right_tree = TryDeepenLeafTree(&Right, rem_depth - 1);
+         if (right_tree == NULL)
+            continue;
+
+         /* Left branch: continues at level with upp[v] = m - 1 */
+         Left.upp[v] = m - 1;
+         left_tree = TryDeepenLeafTree(&Left, rem_depth - 1);
+         if (left_tree == NULL) {
+            FreeDeepenTree(right_tree);
+            continue;
+         }
+
+         /* Both sub-branches closed successfully */
+         tp_deepen_node *node = (tp_deepen_node *) malloc(sizeof(tp_deepen_node));
+         node->is_leaf = 0;
+         node->split_v = v;
+         node->split_m = m;
+         node->right = right_tree;
+         node->left = left_tree;
+         return node;
+      }
+   }
+   return NULL;
+}
+
+void
+PrintDeepenTreeToLines(node, lev, out_lines, out_count)
+tp_deepen_node *node;
+int lev;
+char out_lines[][128];
+int *out_count;
+{
+   int i;
+   char indent[64] = "";
+   for (i = 0; i < lev; i++) strcat(indent, "  ");
+
+   if (node->is_leaf) {
+      sprintf(out_lines[(*out_count)++], "%sL%d R\n", indent, lev);
+      return;
+   }
+   /* Condition node: C split_v split_m */
+   sprintf(out_lines[(*out_count)++], "%sL%d C %2d %2d\n", indent, lev, node->split_v, node->split_m);
+
+   /* Right branch executes at level lev + 1 */
+   PrintDeepenTreeToLines(node->right, lev + 1, out_lines, out_count);
+
+   /* Left branch continues at level lev */
+   PrintDeepenTreeToLines(node->left, lev, out_lines, out_count);
+}
+
+/*********************************************************************
+        TryDeepenLeaf
+ Recursively attempts to close axle A within rem_depth extra levels
+ by splitting on legal eligible vertices and optionally recording patches.
+ Returns 1 if ALL sub-branches close, 0 otherwise.
+*********************************************************************/
+int
+TryDeepenLeaf(A, rem_depth, lineno, lev)
+tp_axle *A;
+int rem_depth, lineno, lev;
+{
+   tp_deepen_node *tree = TryDeepenLeafTree(A, rem_depth);
+   if (tree == NULL)
+      return 0;
+
+   if (patch_export_file[0] != '\0' && num_recorded_patches < MAX_PATCHES) {
+      int count = 0;
+      recorded_patches[num_recorded_patches].lineno = lineno;
+      PrintDeepenTreeToLines(tree, lev, recorded_patches[num_recorded_patches].lines, &count);
+      recorded_patches[num_recorded_patches].num_lines = count;
+      num_recorded_patches++;
+   }
+
+   FreeDeepenTree(tree);
+   return 1;
 }/* TryDeepenLeaf */
 
 /*********************************************************************
