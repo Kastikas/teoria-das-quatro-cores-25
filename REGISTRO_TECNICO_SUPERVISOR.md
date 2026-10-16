@@ -217,7 +217,44 @@ Abaixo está o registro sistemático dos 5 experimentos centrais conduzidos, org
    - **Impacto sobre os 4 Quase-Pares e Invariância do Limite $K = 629$ no Nível 0:**
      * Nenhuma das 33 configurações cobre a folha 204 de `present8` (que permanece coberta exclusivamente por 326 no Nível 0).
      * O MILP HiGHS confirmou que o tamanho mínimo irrestrito de cobertura para o pool de 662 grafos no Nível 0 permanece **estritamente $K = 629$**.
-     * **Conclusão:** O limite inferior provado no Experimento 4.2 é inviolável no Nível 0; para atingir a redução histórica de 628 configurações, a aplicação do **Leaf Deepening na Linha 204** (conforme planejado nas Seções 5 e 6) é estritamente necessária e suficiente.
+      * **Conclusão:** O limite inferior provado no Experimento 4.2 é inviolável no Nível 0; para atingir a redução histórica de 628 configurações, a aplicação do **Leaf Deepening na Linha 204** (conforme planejado nas Seções 5 e 6) é estritamente necessária e suficiente.
+
+---
+
+### Experimento 4.10: Diagnóstico Estrutural, Correção do Motor de Leaf Deepening em `src/discharge.c` e Descoberta Algébrica da Linha 204
+1. **O que foi sugerido:**  
+   - Corrigir os bugs matemáticos e de integridade de certificado identificados na auditoria do supervisor em [`src/discharge.c`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/src/discharge.c) (reuso da pilha `Astack` em `CheckSingleAxleReducible`, geração estrita de `H` sob condição (H2), remoção de `TryDeepenLeaf` de dentro de `CheckBound`, e preservação da semântica de níveis).
+   - Solucionar a **Linha 204 de `present8`** (o único gargalo residual entre as 162.699 folhas para eliminar o quase-par `(326, 558)` em favor do Candidato 3234 e reduzir o catálogo canônico de 629 para 628 configurações com D-redutibilidade pura $C = 0$).
+
+2. **O que foi feito:**  
+   - **Blindagem Canônica do Motor em C (`src/discharge.c`):**
+     * `CheckSingleAxleReducible` refatorado para reusar o motor exato `Reduce(A, 0, 0)` com pilha `Astack` e `CheckIso`, eliminando falsos positivos em eixos com intervalos abertos $low < upp$.
+     * `ComputeTrivialHubcap` instrumentado para verificar estritamente a condição analítica (H2): $2 \sum v_x \le 20(d - 6) + 1$, emitindo certificados `H` de cobertura dupla em vez de linhas `R` forjadas.
+     * Remoção da chamada desestabilizadora de `TryDeepenLeaf` de dentro do loop de avaliação recursiva de `CheckBound`.
+   - **Diagnóstico da Explosão Combinatória no Leaf Deepening:**
+     * Diagnosticou-se que a busca em profundidade 6 sem ordenação heurística das variáveis gerava um espaço de busca fatorial/exponencial ($10^6$ ramificações executando `Reduce`), represado pelo buffer de saída de comandos em background.
+   - **Dissecação Algébrica Cirúrgica da Linha 204:**
+     * Criação de testes dedicados em C ([`scratch/test_hubcap_pairs.c`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/scratch/test_hubcap_pairs.c), [`scratch/test_branches.c`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/scratch/test_branches.c), [`scratch/test_rooted.c`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/scratch/test_rooted.c)) para testar diretamente o eixo da linha 204:
+       $$\text{Centro } d=8; \quad \text{Raios: } (1: 7+, \; 2: 5, \; 3: 6, \; 4: 5, \; 5: 7+, \; 6: 5, \; 7: 5, \; 8: 5)$$
+     * Rastreamento passo a passo de `RootedSubConf` para o Candidato 3234 ($V=22, R=13, C=0$, hubs $v_{17}$ e $v_{20}$ com grau 8).
+
+3. **O motivo pelo qual foi feito:**  
+   - A Linha 204 de `present8` é a **única folha órfã em todo o universo combinatorial do descarregamento**. Era fundamental entender por que a Configuração 326 fechava a linha e qual é o caminho analítico exato para fechá-la sem ela.
+
+4. **Resultados:**  
+   - **Descoberta 1 (Gargalo Exato do Hubcap de `present8`):**
+     * O Hubcap RSST da linha 205 (`L6 H (1,1,0) (2,2,2) (3,3,4) (4,4,2) (5,5,0) (7,7,5) (6,8,7)`, custo de cobertura dupla $= 40 \le 41$) foi avaliado diretamente no eixo da Linha 204.
+     * **Todos os membros passam 100%**, exceto o membro `(2,2,2)`, que falha apenas se o Outlet Posicionado 5 no raio 2 for ativado. Este outlet exige obrigatoriamente que o chapéu 10 tenha grau 5 ($d(10) = 5$).
+     * **Teorema de Fechamento por Chapéu 10:** Se o chapéu 10 tiver grau $\ge 6$ (`low[10] = 6`), o Outlet 5 é geometricamente impossibilitado de disparar. O membro `(2,2,2)` retém apenas os outlets 1 e 2 (carga $2 \le 2$), satisfazendo a desigualdade algébrica e **fechando o Hubcap em 100% dos casos sem necessidade de nenhuma configuração redutível**!
+   - **Descoberta 2 (Fechamento do Ramo $d(10) = 5$ por Redutibilidade Canônica):**
+     * No ramo complementar onde o chapéu 10 tem grau 5 ($d(10) = 5$), provou-se que a ramificação no chapéu 9 ($d(9) \le 6$) **reduz 100% de forma imediata via configurações canônicas já presentes no catálogo de 628**:
+       - Para $d(1) = 7$: o sub-ramo $d(9) = 6$ reduz pela Configuração Canônica 410 (`Conf(6,9,4)`), e o sub-ramo $d(9) = 5$ reduz pela Configuração Canônica 398 (`Conf(6,7,6)`). A pilha `Astack` consolida o intervalo $[5, 6]$ em uma única linha `R`!
+       - Para $d(1) = 8$: o sub-ramo $d(9) = 6$ reduz por `Conf(9,10,7)` e $d(9) = 5$ reduz por `Conf(8,9,7)`.
+   - **Descoberta 3 (Ancoragem Rigorosa do Candidato 3234):**
+     * Provou-se que o Candidato 3234 ($V=22, R=13, C=0$) ancora perfeitamente via `RootedSubConf`:
+       $$\text{Passos 2 a 8 validados; } \text{SubConf result for Candidate 3234: 1}$$
+       quando os vértices de suporte são fixados: $d(1) = 8$, chapéu $16 = 5$, chapéu $9 = 6$ e chapéu $10 = 5$.
+   - **Conclusão:** A Linha 204 pode ser resolvida com uma sub-árvore minimal de profundidade 2, particionando o chapéu 10 em $d(10) \ge 6$ (fechado por `H`) e $d(10) = 5$ (fechado por `R` via canônicas 398/410 ou Candidato 3234).
 
 ---
 
@@ -232,16 +269,17 @@ Abaixo está o registro sistemático dos 5 experimentos centrais conduzidos, org
 
 ---
 
-## 6. Próximo Passo: Redução Cirúrgica para 628 via Bipartição da Linha 204
+## 6. Próximo Passo: Resolução Minimal da Linha 204 e Validação do Catálogo 628
 
 O gargalo isolado é a linha 204 de `present8`. O eixo axial neste nó possui assinatura:
 $$\text{Vértice Central } d=8, \quad \text{Raios: } (1: 7+, \; 2: 5, \; 3: 6, \; 4: 5, \; 5: 7+, \; 6: 5, \; 7: 5, \; 8: 5)$$
 
-### Procedimento de Resolução:
-1. **Bipartição:** Ramificar a folha 204 sobre o raio 1:
-   * Sub-ramo 1 ($d(1) \ge 8$): Fecha por dissipação de carga ($\le 0$).
-   * Sub-ramo 2 ($d(1) = 7$): Desbloqueia leques $v17$ e $v25$, permitindo ancorar o Candidato 3234 ($R=13$).
+### Procedimento de Resolução Minimal:
+1. **Substituição da Linha 204 por Sub-Árvore Minimal de Chapéu 10:**
+   * Condição `L6 C 10 -5`:
+     - Ramo Superior ($d(10) \ge 6$, no nível 6): Fecha diretamente com o Hubcap `L6 H (1,1,0) (2,2,2) (3,3,4) (4,4,2) (5,5,0) (7,7,5) (6,8,7)`.
+     - Ramo Inferior ($d(10) = 5$, no nível 7): Condição `L7 C 9 -6`, fechando com `L8 R` (coberto pelas canônicas 398 e 410) ou pelo Candidato 3234.
 2. **Patch e Validação:**
-   * Aplicar patch via `scripts/apply_present_patches.py` em `present8`.
-   * Verificar as 5 apresentações no `./bin/discharge` canônico sem flags contra o catálogo de 628 configurações.
-   * Certificar com `./target/release/quatro_cores verify-file` (todas 628 D-redutíveis puras).
+   * Aplicar patch via `scripts/apply_present_patches.py` em `present8`, recalculando as linhas de simetria (`S`).
+   * Verificar as 5 apresentações no `./bin/discharge` canônico sem flags contra o catálogo de 628 configurações (`data/unavoidable_628.conf`).
+   * Certificar com `./target/release/quatro_cores verify-file data/unavoidable_628.conf 1000` (todas 628 provadas D-redutíveis puras com $C=0$).

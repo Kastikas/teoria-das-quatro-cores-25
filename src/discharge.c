@@ -129,7 +129,7 @@ int OutletPermitted(tp_axle *, tp_outlet *, int);
 int ReflForced(tp_axle *, tp_outlet *, int);
 void PrintOutlet(int, FILE *, tp_outlet *);
 int Reduce(tp_axle *, int, int);
-int IsChargeNonPositive(tp_axle *);
+int ComputeTrivialHubcap(tp_axle *, char *);
 int CheckSingleAxleReducible(tp_axle *);
 int GetBranchableVertices(tp_axle *, int *);
 int TryDeepenLeaf(tp_axle *, int, int, int);
@@ -163,7 +163,7 @@ int OutletPermitted();
 int ReflForced();
 void PrintOutlet();
 int Reduce();
-int IsChargeNonPositive();
+int ComputeTrivialHubcap();
 int CheckSingleAxleReducible();
 int GetBranchableVertices();
 int TryDeepenLeaf();
@@ -805,11 +805,7 @@ tp_axle *A;
    /* check reducibility */
    if (forcedch > maxch) {
       if (Reduce(A, lineno, print >= PRTALL ? 1 : 0) != 1) {
-         if (deepen_mode && TryDeepenLeaf(A, max_deepen_depth, lineno, depth)) {
-            /* Closed by deepening */
-         } else {
-            Error("Incorrect hubcap upper bound", lineno);
-         }
+         Error("Incorrect hubcap upper bound", lineno);
       }
       if (print >= PRTPAI && print < PRTALL)
 	 Indent(depth, "Reducible. Case done.\n");
@@ -1221,23 +1217,27 @@ tp_axle *A;
 }/* Reduce */
 
 /*********************************************************************
-        IsChargeNonPositive
- Computes the upper bound of the charge of the central hub 0.
- Returns 1 if max_charge <= 0, 0 otherwise.
+        ComputeTrivialHubcap
+ Se a soma das cargas maximas individuais por raio x=1..deg for <= 10*(deg-6),
+ formata uma linha H (1,1,v1) (2,2,v2) ... (deg,deg,v_deg) 100% valida no RSST
+ e retorna 1. Caso contrario, retorna 0.
 *********************************************************************/
 int
-IsChargeNonPositive(A)
+ComputeTrivialHubcap(A, out_h_str)
 tp_axle *A;
+char *out_h_str;
 {
-   int deg, forcedch, allowedch, x, i;
+   int deg, x, i, forcedch, allowedch, total_v = 0;
+   int v_spoke[MAXVAL + 2];
+   char buf[32];
    tp_outlet *T;
 
    deg = A->low[0];
-   if (deg < 5 || global_nouts == 0)
+   if (deg < 7 || global_nouts == 0)
       return (0);
 
-   forcedch = allowedch = 0;
    for (x = 1; x <= deg; x++) {
+      forcedch = allowedch = 0;
       for (i = 0, T = global_outlets; i < global_nouts; i++, T++) {
          if (OutletForced(A, T, x)) {
             forcedch += T->value;
@@ -1246,55 +1246,40 @@ tp_axle *A;
                allowedch += T->value;
          }
       }
+      v_spoke[x] = forcedch + allowedch;
+      total_v += v_spoke[x];
    }
 
-   /* Base charge of vertex of degree deg is 10 * (6 - deg) */
-   return (10 * (6 - deg) + forcedch + allowedch <= 0);
-}/* IsChargeNonPositive */
+   /* Verifica (H2): 2 * total_v <= 20 * (deg - 6) + 1  <=>  total_v <= 10 * (deg - 6) */
+   if (2 * total_v > 20 * (deg - 6) + 1)
+      return (0);
+
+   out_h_str[0] = '\0';
+   for (x = 1; x <= deg; x++) {
+      sprintf(buf, "(%d,%d,%d)%s", x, x, v_spoke[x], (x < deg) ? " " : "");
+      strcat(out_h_str, buf);
+   }
+   return (1);
+}/* ComputeTrivialHubcap */
 
 /*********************************************************************
         CheckSingleAxleReducible
- Tests reducibility of axle A against all allowed configurations
- (reconstructing adjacency matrix B and edgelist from scratch).
- Returns 1 if reducible, 0 otherwise.
+ Reutiliza o motor exato Reduce (com Astack e CheckIso) sem efeitos
+ colaterais de print/matrix. Retorna 1 se redutivel, 0 caso contrario.
 *********************************************************************/
 int
 CheckSingleAxleReducible(A)
 tp_axle *A;
 {
-   tp_axle B;
-   tp_adjmat adjmat;
-   tp_edgelist edgelist;
-   tp_vertices image;
-   int a, b, b_cnt, *b_list, k, h;
-
-   CopyAxle(&B, A);
-   Getadjmat(&B, adjmat);
-   GetEdgelist(&B, edgelist);
-
-   for (a = 5; a <= 11; a++) {
-      for (b = 5; b <= 8 && b <= a; b++) {
-         if (edgelist[a][b][0] == 0) continue;
-         b_cnt = bucket_count[a][b];
-         if (b_cnt == 0) continue;
-         b_list = bucket_confs[a][b];
-         for (k = 0; k < b_cnt; k++) {
-            h = b_list[k];
-            if (forbidden_conf[h]) continue;
-            if (SubConf(adjmat, B.upp, redquestions[h], edgelist, image)) {
-               return (1);
-            }
-         }
-      }
-   }
-   for (k = 0; k < unbucketed_count; k++) {
-      h = unbucketed_confs[k];
-      if (forbidden_conf[h]) continue;
-      if (SubConf(adjmat, B.upp, redquestions[h], edgelist, image)) {
-         return (1);
-      }
-   }
-   return (0);
+   int saved_track = track_mode;
+   int saved_matrix = matrix_mode;
+   int res;
+   track_mode = 0;
+   matrix_mode = 0;
+   res = Reduce(A, 0, 0);
+   track_mode = saved_track;
+   matrix_mode = saved_matrix;
+   return (res);
 }/* CheckSingleAxleReducible */
 
 /*********************************************************************
@@ -1346,7 +1331,8 @@ int out_verts[];
 
 typedef struct tp_deepen_node {
    int is_leaf;
-   int leaf_type; /* 'R' */
+   int leaf_type; /* 'R' or 'H' */
+   char hubcap_str[128];
    int split_v;
    int split_m;
    struct tp_deepen_node *left;
@@ -1370,21 +1356,33 @@ int rem_depth;
 {
    int candidates[CARTVERT];
    int n_cands, i, v, m;
+   char h_str[128];
 
-   /* 1. Check if axle already reduces or closes by non-positive charge */
-   if (CheckSingleAxleReducible(A) || IsChargeNonPositive(A)) {
+   /* 1. Check if axle already reduces with Astack/CheckIso */
+   if (CheckSingleAxleReducible(A)) {
       tp_deepen_node *node = (tp_deepen_node *) malloc(sizeof(tp_deepen_node));
       node->is_leaf = 1;
       node->leaf_type = 'R';
+      node->hubcap_str[0] = '\0';
       node->left = node->right = NULL;
       return node;
    }
 
-   /* 2. Depth limit reached */
+   /* 2. Check if axle closes by non-positive charge (valid trivial hubcap) */
+   if (ComputeTrivialHubcap(A, h_str)) {
+      tp_deepen_node *node = (tp_deepen_node *) malloc(sizeof(tp_deepen_node));
+      node->is_leaf = 1;
+      node->leaf_type = 'H';
+      strcpy(node->hubcap_str, h_str);
+      node->left = node->right = NULL;
+      return node;
+   }
+
+   /* 3. Depth limit reached */
    if (rem_depth <= 0)
       return NULL;
 
-   /* 3. Branch on legal eligible vertices */
+   /* 4. Branch on legal eligible vertices */
    n_cands = GetBranchableVertices(A, candidates);
    for (i = 0; i < n_cands; i++) {
       v = candidates[i];
@@ -1393,13 +1391,13 @@ int rem_depth;
          tp_axle Right = *A;
          tp_deepen_node *right_tree, *left_tree;
 
-         /* Right branch: Condition v m (low[v] = m) */
+         /* Right branch: Condition v m (low[v] = m) at level lev + 1 */
          Right.low[v] = m;
          right_tree = TryDeepenLeafTree(&Right, rem_depth - 1);
          if (right_tree == NULL)
             continue;
 
-         /* Left branch: continues at level with upp[v] = m - 1 */
+         /* Left branch: continues at level lev with upp[v] = m - 1 */
          Left.upp[v] = m - 1;
          left_tree = TryDeepenLeafTree(&Left, rem_depth - 1);
          if (left_tree == NULL) {
@@ -1410,6 +1408,8 @@ int rem_depth;
          /* Both sub-branches closed successfully */
          tp_deepen_node *node = (tp_deepen_node *) malloc(sizeof(tp_deepen_node));
          node->is_leaf = 0;
+         node->leaf_type = 0;
+         node->hubcap_str[0] = '\0';
          node->split_v = v;
          node->split_m = m;
          node->right = right_tree;
@@ -1432,7 +1432,10 @@ int *out_count;
    for (i = 0; i < lev; i++) strcat(indent, "  ");
 
    if (node->is_leaf) {
-      sprintf(out_lines[(*out_count)++], "%sL%d R\n", indent, lev);
+      if (node->leaf_type == 'H')
+         sprintf(out_lines[(*out_count)++], "%sL%d H  %s\n", indent, lev, node->hubcap_str);
+      else
+         sprintf(out_lines[(*out_count)++], "%sL%d R\n", indent, lev);
       return;
    }
    /* Condition node: C split_v split_m */
