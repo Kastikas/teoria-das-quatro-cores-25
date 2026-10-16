@@ -32,14 +32,11 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Compile C Discharging Verifiers
-        run: make all
+      - name: Compile C Discharging Verifier
+        run: make bin/discharge
 
       - name: Verify Canonical RSST 629 Model (Folder 01)
         run: bash 01_modelo_629_rsst_canonico/verify_629.sh
 
-      - name: Verify 21-Configuration World Record (Folder 10)
-        run: ./scripts/verify.sh 21
-
-      - name: Verify 10-Configuration Inverse Discharging Model (Folder 11)
-        run: ./scripts/verify.sh 10
+      - name: Verify Exact Leaf Deepening Model (Folder 02)
+        run: bash 02_modelo_exato_leaf_deepening/verify_629.sh

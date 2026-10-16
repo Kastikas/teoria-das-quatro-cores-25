@@ -5,7 +5,7 @@ CC ?= gcc
 CFLAGS ?= -O3 -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-implicit-int -Wno-format -Wno-unused-result
 CARGO ?= cargo
 
-.PHONY: all build test verifiers clean verify-24 verify-21 verify-10 verify-all help
+.PHONY: all build test verifiers clean verify-629 verify-exact verify-all help
 
 all: build verifiers bin/discharge
 
@@ -21,11 +21,10 @@ help:
 	@echo "=========================================================================="
 	@echo "  make build         Compila o motor algébrico em Rust (modo release)"
 	@echo "  make test          Executa a suíte de testes unitários em Rust"
-	@echo "  make verifiers     Compila todos os executáveis C de descarregamento"
-	@echo "  make verify-21     Executa a verificação completa do Recorde de 21 Grafos"
-	@echo "  make verify-10     Executa a verificação do Modelo Inverso de 10 Grafos"
-	@echo "  make verify-25     Executa a verificação do modelo canônico de 25 Grafos"
-	@echo "  make verify-all    Executa a verificação de todos os marcos"
+	@echo "  make verifiers     Compila o binário canônico de descarregamento (bin/discharge)"
+	@echo "  make verify-629    Executa a verificação do Modelo Canônico 629 (Pasta 01)"
+	@echo "  make verify-exact  Executa a verificação do Modelo Leaf Deepening (Pasta 02)"
+	@echo "  make verify-all    Executa a verificação de ambos os modelos canônicos"
 	@echo "  make clean         Remove todos os binários e arquivos intermediários"
 	@echo "=========================================================================="
 
@@ -35,40 +34,20 @@ build:
 test:
 	$(CARGO) test
 
-verifiers: bin/discharge \
-           09_perspectivas_futuras_3flips/discharge_universal \
-           10_recorde_21_configuracoes/discharge_universal \
-           11_descarregamento_inverso_sub15/discharge_universal \
-           11_descarregamento_inverso_sub15/discharge_profiler
+verifiers: bin/discharge
 
-09_perspectivas_futuras_3flips/discharge_universal: 09_perspectivas_futuras_3flips/discharge_universal.c
-	$(CC) $(CFLAGS) -o $@ $<
+verify-629: build bin/discharge
+	@echo ">>> Executando verificação do Modelo Canônico RSST 629 (Pasta 01)..."
+	@bash 01_modelo_629_rsst_canonico/verify_629.sh
 
-10_recorde_21_configuracoes/discharge_universal: 10_recorde_21_configuracoes/discharge_universal.c
-	$(CC) $(CFLAGS) -o $@ $<
+verify-exact: build bin/discharge
+	@echo ">>> Executando verificação do Modelo Leaf Deepening (Pasta 02)..."
+	@bash 02_modelo_exato_leaf_deepening/verify_629.sh
 
-11_descarregamento_inverso_sub15/discharge_universal: 11_descarregamento_inverso_sub15/discharge_universal.c
-	$(CC) $(CFLAGS) -o $@ $<
-
-11_descarregamento_inverso_sub15/discharge_profiler: 11_descarregamento_inverso_sub15/discharge_profiler.c
-	$(CC) $(CFLAGS) -o $@ $<
-
-verify-24: build 09_perspectivas_futuras_3flips/discharge_universal
-	@echo ">>> Executando verificação do Modelo de 24 Configurações..."
-	@cd 09_perspectivas_futuras_3flips && ./verify_24.sh
-
-verify-21: build 10_recorde_21_configuracoes/discharge_universal
-	@echo ">>> Executando verificação do Recorde Mundial de 21 Configurações..."
-	@cd 10_recorde_21_configuracoes && ./verify_21.sh
-
-verify-10: build 11_descarregamento_inverso_sub15/discharge_profiler
-	@echo ">>> Executando verificação do Modelo Inverso de 10 Configurações..."
-	@cd 11_descarregamento_inverso_sub15 && ./verify_10_model.sh
-
-verify-all: verify-21 verify-10
+verify-all: verify-629 verify-exact
 
 clean:
 	$(CARGO) clean
 	rm -rf bin/
-	@find . -type f \( -name "discharge" -o -name "discharge_track" -o -name "discharge_universal" -o -name "discharge_profiler" -o -name "outlet.et" \) -delete
+	@find . -type f \( -name "discharge" -o -name "discharge_track" -o -name "outlet.et" \) -delete
 	@echo "Ambiente limpo com sucesso."
