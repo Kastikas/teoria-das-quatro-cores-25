@@ -171,12 +171,13 @@ impl SynthesisPipeline {
 
         // Se a orientação de rot_v for oposta à de nbrs_u, inverte to_insert
         if c_first == u_prev && c_last == u_next {
-            // Ordem direta coincide
+            // Orientação cíclica idêntica: ordem direta preservada
         } else if c_first == u_next && c_last == u_prev {
             to_insert.reverse();
         } else {
-            // Em triangulações planares consistentes, uma das duas orientações é estritamente garantida
-            to_insert.reverse();
+            return Err(SynthesisError::ViolatesRSSTAdmissibility(
+                "Inconsistência topológica: vizinhos comuns não flanqueiam a aresta (u, v) na ordem cíclica.",
+            ));
         }
 
         // Monta a nova lista de vizinhos para u:
@@ -395,8 +396,8 @@ impl SynthesisPipeline {
 
         for h in (r + 1)..=n {
             let d_h = conf.mat[h][0];
-            let nbrs: Vec<usize> = (1..=d_h).map(|k| conf.mat[h][k]).collect();
-            let ring_nbrs: Vec<usize> = nbrs.iter().cloned().filter(|&x| x <= r).collect();
+            let nbrs_h: Vec<usize> = (1..=d_h).map(|k| conf.mat[h][k]).collect();
+            let ring_nbrs: Vec<usize> = nbrs_h.iter().cloned().filter(|&x| x <= r).collect();
 
             if ring_nbrs.len() >= 2 {
                 for i in 0..ring_nbrs.len() {
@@ -412,19 +413,41 @@ impl SynthesisPipeline {
                         }
                         arc_ab.push(rb);
 
-                        let mut sector_internals = Vec::new();
-                        for v in (r + 1)..=n {
-                            if v != h {
-                                let d_v = conf.mat[v][0];
-                                let v_nbrs = (1..=d_v).map(|k| conf.mat[v][k]);
-                                let all_in_sector = v_nbrs.into_iter().all(|nb| {
-                                    nb == h || arc_ab.contains(&nb) || nb > r
-                                });
-                                if all_in_sector {
-                                    sector_internals.push(v);
+                        // Encontra vizinhos de h entre ra e rb na ordem cíclica de h
+                        let pos_ra = nbrs_h.iter().position(|&x| x == ra).unwrap();
+                        let pos_rb = nbrs_h.iter().position(|&x| x == rb).unwrap();
+
+                        let mut seeds = Vec::new();
+                        let mut idx = (pos_ra + 1) % d_h;
+                        while idx != pos_rb {
+                            let nb = nbrs_h[idx];
+                            if nb > r {
+                                seeds.push(nb);
+                            }
+                            idx = (idx + 1) % d_h;
+                        }
+
+                        // BFS / flood-fill para encontrar estritamente os vértices internos do setor
+                        let mut visited = HashSet::new();
+                        let mut queue = std::collections::VecDeque::new();
+                        for s in seeds {
+                            if visited.insert(s) {
+                                queue.push_back(s);
+                            }
+                        }
+
+                        while let Some(curr_v) = queue.pop_front() {
+                            let d_v = conf.mat[curr_v][0];
+                            for k in 1..=d_v {
+                                let nb = conf.mat[curr_v][k];
+                                if nb > r && nb != h && !visited.contains(&nb) {
+                                    visited.insert(nb);
+                                    queue.push_back(nb);
                                 }
                             }
                         }
+
+                        let sector_internals: Vec<usize> = visited.into_iter().collect();
 
                         sectors.push(PlanarSector {
                             hub: h,
@@ -440,9 +463,29 @@ impl SynthesisPipeline {
         sectors
     }
 
+    /// Calcula a distância L1 entre os perfis de graus ordenados (internos e de anel) de duas configurações.
+    pub fn structural_degree_distance(a: &Configuration, b: &Configuration) -> usize {
+        let r = a.ring();
+        let n = a.verts();
+        let mut ring_a: Vec<usize> = (1..=r).map(|i| a.mat[i][0]).collect();
+        let mut ring_b: Vec<usize> = (1..=r).map(|i| b.mat[i][0]).collect();
+        ring_a.sort_unstable();
+        ring_b.sort_unstable();
+
+        let mut int_a: Vec<usize> = ((r + 1)..=n).map(|i| a.mat[i][0]).collect();
+        let mut int_b: Vec<usize> = ((r + 1)..=n).map(|i| b.mat[i][0]).collect();
+        int_a.sort_unstable();
+        int_b.sort_unstable();
+
+        let d_ring: usize = ring_a.iter().zip(ring_b.iter()).map(|(x, y)| x.abs_diff(*y)).sum();
+        let d_int: usize = int_a.iter().zip(int_b.iter()).map(|(x, y)| x.abs_diff(*y)).sum();
+        d_ring + d_int
+    }
+
     /// Executa o cruzamento geodésico guiado por flips entre duas configurações parentais.
-    /// Explora intermediários no espaço de triangulações, submetendo cada candidato
-    /// aos 5 Portões Invioláveis (incluindo teste algébrico de Birkhoff com C = 0).
+    /// Explora intermediários no espaço de triangulações, filtrando candidatos que
+    /// reduzem ou preservam a distância estrutural em direção ao parceiro (geodésica real),
+    /// e submetendo cada candidato aos 5 Portões Invioláveis (incluindo teste algébrico de Birkhoff com C = 0).
     pub fn recombine_guided_flips(
         donor_a: &Configuration,
         donor_b: &Configuration,
@@ -458,28 +501,36 @@ impl SynthesisPipeline {
         seen_signatures.insert(canonical_dihedral_signature(donor_a));
         seen_signatures.insert(canonical_dihedral_signature(donor_b));
 
-        // Nível 1: Geração de vizinhos de flip de donor_a
+        let base_dist = Self::structural_degree_distance(donor_a, donor_b);
+
+        // Nível 1: Geração de vizinhos de flip de donor_a que caminham em direção a donor_b
         let flips_a = crate::flipper::generate_internal_flips(donor_a);
         for flip in flips_a {
-            let sig = canonical_dihedral_signature(&flip.conf);
-            if seen_signatures.insert(sig) {
-                if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
-                    let mut certified = flip.conf;
-                    certified.name = format!("{}_x_{}_f1", donor_a.name, donor_b.name);
-                    results.push(certified);
+            let dist_to_b = Self::structural_degree_distance(&flip.conf, donor_b);
+            if dist_to_b <= base_dist {
+                let sig = canonical_dihedral_signature(&flip.conf);
+                if seen_signatures.insert(sig) {
+                    if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
+                        let mut certified = flip.conf;
+                        certified.name = format!("{}_x_{}_f1", donor_a.name, donor_b.name);
+                        results.push(certified);
+                    }
                 }
             }
         }
 
-        // Nível 1: Geração de vizinhos de flip de donor_b
+        // Nível 1: Geração de vizinhos de flip de donor_b que caminham em direção a donor_a
         let flips_b = crate::flipper::generate_internal_flips(donor_b);
         for flip in flips_b {
-            let sig = canonical_dihedral_signature(&flip.conf);
-            if seen_signatures.insert(sig) {
-                if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
-                    let mut certified = flip.conf;
-                    certified.name = format!("{}_x_{}_f2", donor_b.name, donor_a.name);
-                    results.push(certified);
+            let dist_to_a = Self::structural_degree_distance(&flip.conf, donor_a);
+            if dist_to_a <= base_dist {
+                let sig = canonical_dihedral_signature(&flip.conf);
+                if seen_signatures.insert(sig) {
+                    if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
+                        let mut certified = flip.conf;
+                        certified.name = format!("{}_x_{}_f2", donor_b.name, donor_a.name);
+                        results.push(certified);
+                    }
                 }
             }
         }
@@ -490,12 +541,16 @@ impl SynthesisPipeline {
             for hybrid in level1 {
                 let flips_h = crate::flipper::generate_internal_flips(&hybrid);
                 for flip in flips_h {
-                    let sig = canonical_dihedral_signature(&flip.conf);
-                    if seen_signatures.insert(sig) {
-                        if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
-                            let mut certified = flip.conf;
-                            certified.name = format!("{}_f3", hybrid.name);
-                            results.push(certified);
+                    let d_a = Self::structural_degree_distance(&flip.conf, donor_a);
+                    let d_b = Self::structural_degree_distance(&flip.conf, donor_b);
+                    if d_a <= base_dist && d_b <= base_dist {
+                        let sig = canonical_dihedral_signature(&flip.conf);
+                        if seen_signatures.insert(sig) {
+                            if let Ok(_) = Self::validate_rigorous(&flip.conf, engine) {
+                                let mut certified = flip.conf;
+                                certified.name = format!("{}_f3", hybrid.name);
+                                results.push(certified);
+                            }
                         }
                     }
                 }
@@ -580,12 +635,16 @@ impl SynthesisPipeline {
 
         let chunk_size = total_pairs.div_ceil(threads).max(1);
         let pairs_atomic = AtomicUsize::new(0);
+        let crossovers_atomic = AtomicUsize::new(0);
+        let rsst_atomic = AtomicUsize::new(0);
         let pure_d_atomic = AtomicUsize::new(0);
 
         let thread_results: Vec<Vec<Configuration>> = std::thread::scope(|s| {
             let mut handles = Vec::new();
             for chunk in candidate_pairs.chunks(chunk_size) {
                 let p_ref = &pairs_atomic;
+                let c_ref = &crossovers_atomic;
+                let r_ref = &rsst_atomic;
                 let d_ref = &pure_d_atomic;
                 let depth = options.max_depth;
 
@@ -595,6 +654,16 @@ impl SynthesisPipeline {
 
                     for &(conf_a, conf_b) in chunk {
                         p_ref.fetch_add(1, Ordering::Relaxed);
+                        // Flips de donor_a
+                        let flips_a = crate::flipper::generate_internal_flips(conf_a);
+                        c_ref.fetch_add(flips_a.len(), Ordering::Relaxed);
+                        r_ref.fetch_add(flips_a.len(), Ordering::Relaxed);
+
+                        // Flips de donor_b
+                        let flips_b = crate::flipper::generate_internal_flips(conf_b);
+                        c_ref.fetch_add(flips_b.len(), Ordering::Relaxed);
+                        r_ref.fetch_add(flips_b.len(), Ordering::Relaxed);
+
                         let certified = Self::recombine_guided_flips(conf_a, conf_b, &engine, depth);
                         d_ref.fetch_add(certified.len(), Ordering::Relaxed);
                         local_certified.extend(certified);
@@ -621,8 +690,8 @@ impl SynthesisPipeline {
         let stats = BatchRecombinationStats {
             total_input_confs: pool.len(),
             compatible_pairs: total_pairs,
-            crossovers_attempted: total_pairs * 2,
-            rsst_admissible_passed: total_pure_d,
+            crossovers_attempted: crossovers_atomic.load(Ordering::Relaxed),
+            rsst_admissible_passed: rsst_atomic.load(Ordering::Relaxed),
             pure_d_certified: total_pure_d,
             unique_d_certified: final_unique.len(),
         };
@@ -663,6 +732,16 @@ impl SynthesisPipeline {
 
         // Procura dois vizinhos consecutivos no anel
         let nbrs_v: Vec<usize> = (1..=d_v).map(|k| conf.mat[v][k]).collect();
+
+        // Garante que v possui EXATAMENTE 2 vizinhos no anel (evita criar cordas no anel ao expandir)
+        let ring_nbr_count = nbrs_v.iter().filter(|&&x| x <= r).count();
+        if ring_nbr_count != 2 {
+            return Err(SynthesisError::ViolatesChordlessRing(format!(
+                "Vértice interno {} possui {} vizinhos no anel (esperado exatamente 2 para evitar cordas).",
+                v, ring_nbr_count
+            )));
+        }
+
         let mut consecutive_pair = None;
 
         for i in 0..d_v {
@@ -739,9 +818,18 @@ impl SynthesisPipeline {
 
             let mut mapped_nbrs = Vec::new();
             if old_u == v {
-                for &nb in &old_nbrs {
-                    mapped_nbrs.push(node_map[nb]);
+                // Rotaciona old_nbrs de v para que os vizinhos no anel (ra, rb) fiquem nas extremidades
+                // No padrão RSST, para um vértice do anel, o primeiro vizinho (index 1) e o último (index d)
+                // devem ser seus vizinhos de anel (expected_next = rb, expected_prev = ra)
+                let pos_rb = old_nbrs.iter().position(|&x| x == rb).unwrap();
+                let mut rot_v: Vec<usize> = (0..d_old)
+                    .map(|k| node_map[old_nbrs[(pos_rb + k) % d_old]])
+                    .collect();
+                if rot_v.len() >= 2 && rot_v[1] == node_map[ra] {
+                    rot_v.rotate_left(1);
+                    rot_v.reverse();
                 }
+                mapped_nbrs = rot_v;
             } else if old_u == ra {
                 for &nb in &old_nbrs {
                     if nb != rb {
