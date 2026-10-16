@@ -188,6 +188,39 @@ Abaixo está o registro sistemático dos 5 experimentos centrais conduzidos, org
 
 ---
 
+### Experimento 4.9: Auditoria de Cobertura das 33 Configurações Sintetizadas contra 162.699 Folhas do Descarregamento
+1. **O que foi sugerido:**  
+   Avaliar a matriz exata de cobertura das 33 novas configurações topológicas sintetizadas (`synthesized_superpool_33.conf`) contra todas as 162.699 folhas das apresentações `present7` a `present11` do método de descarregamento de Robertson, Sanders, Seymour e Thomas (RSST), determinando a distribuição de atividade, o impacto sobre os 4 quase-pares históricos e a solvência de Set Cover via MILP (HiGHS).
+
+2. **O que foi feito:**  
+   - **Compatibilização do Formato RSST:** Correção de terminação canônica (`\n\n`) em `data/pool/synthesized_superpool_33.conf` para plena conformidade com o parser `ReadConf` de `src/discharge.c`.
+   - **Extração da Matriz de Cobertura Global:** Criação do pool unificado de 662 configurações (`data/pool/pool_629_plus_33.conf`: 629 canônicas + 33 sintetizadas) e execução de `./bin/discharge -m` sobre as 5 apresentações axiais (`present7` a `present11`), mapeando 162.699 folhas individuais (40.627 em deg 7, 65.371 em deg 8, 45.314 em deg 9, 10.123 em deg 10 e 1.264 em deg 11).
+   - **Script de Análise Algébrica e Combinatória (`scripts/analyze_superpool_coverage.py`):** Análise de frequência de cobertura por grau, censo de motifs (Hubs de grau 7 e 8), intersecção com os 4 quase-pares, teste de subsunção direta e formulação exata de Set Cover via HiGHS MILP sobre as 18.048 restrições de folhas únicas.
+
+3. **O motivo pelo qual foi feito:**  
+   Determinar se os novos grafos sintetizados por contração e recombinação geodésica possuem relevância combinatória direta no descarregamento oficial, se conseguem substituir configurações canônicas existentes com menor tamanho de anel ou grau de complexidade, e verificar se algum deles é capaz de fechar a folha residual 204 da árvore `present8` sem necessidade de Leaf Deepening.
+
+4. **Resultados:**  
+   - **Atividade e Cobertura Massiva:** Das 33 configurações sintetizadas, **12 (36,4%) demonstraram alta atividade combinatória**, cobrindo milhares de sub-eixos axiais nas apresentações:
+     * **Top 1 (CID 646 - `257.207_x_667.1028`):** Cobre **606 folhas** em `present8` ($V=23, R=14, \text{Hubs}=1\text{h}8+0\text{h}7$), compartilhando 20,4% de todas as ocorrências da configuração canônica 390.
+     * **Top 2 (CID 634 - `7566.8402_x_26373722.126`):** Cobre **362 folhas** em `present8` ($V=21, R=13, \text{Hubs}=1\text{h}8+0\text{h}7$), cobrindo 36,5% das ocorrências da canônica 354 e 33,9% da 377.
+     * **Top 3 (CID 650 - `28926.1028_x_667.1028`):** Cobre **287 folhas** em `present8` ($V=23, R=14, \text{Hubs}=1\text{h}8+1\text{h}7$).
+     * **Top 4 (CID 638 - `124.1306817_x_482.1148`):** Cobre **211 folhas** em `present7` ($V=22, R=13, \text{Hubs}=0\text{h}8+1\text{h}7$).
+     * **Top 5 (CID 630 - `140.68882` contração):** Cobre **192 folhas** em `present7` ($V=23, R=14, \text{Hubs}=0\text{h}8+1\text{h}7$).
+     * **Top 6 e 7 (CIDs 632 e 633):** Cobrem **165 folhas** cada em `present7` ($V=21, R=13, \text{Hubs}=0\text{h}8+2\text{h}7$).
+   - **Descoberta de Subsunção Exata e Isomorfismos Topológicos:**
+     * **Redescoberta Canônica via Contração:** O CID 632 ($V=21, R=13$, graus $[5,5,5,6,6,6,7,7]$), obtido por contração de aresta interna de um grafo maior, é **estritamente isomorfo** à Configuração Canônica 187 do RSST (`126.504366`), comprovando na prática a consistência bidirecional do operador de contração.
+     * **Duas Configurações Alternativas Não-Isomorfas 100% Subsumidoras:**
+       - O **CID 633** é **topologicamente não-isomorfo** à canônica 187, mas cobre **exatamente os mesmos 165 eixos** de 187 ($C=0$).
+       - O **CID 650** é **topologicamente não-isomorfo** à canônica 491, mas cobre **exatamente os mesmos 287 eixos** de 491 ($C=0$).
+       - Ambas constituem grafos substitutos perfeitos e certificados para catálogos alternativos de 629 configurações.
+   - **Impacto sobre os 4 Quase-Pares e Invariância do Limite $K = 629$ no Nível 0:**
+     * Nenhuma das 33 configurações cobre a folha 204 de `present8` (que permanece coberta exclusivamente por 326 no Nível 0).
+     * O MILP HiGHS confirmou que o tamanho mínimo irrestrito de cobertura para o pool de 662 grafos no Nível 0 permanece **estritamente $K = 629$**.
+     * **Conclusão:** O limite inferior provado no Experimento 4.2 é inviolável no Nível 0; para atingir a redução histórica de 628 configurações, a aplicação do **Leaf Deepening na Linha 204** (conforme planejado nas Seções 5 e 6) é estritamente necessária e suficiente.
+
+---
+
 ## 5. Tabela Comparativa dos 4 Quase-Pares Identificados
 
 | Par | Candidato D-Redutível | Geometria do Candidato | Cobertura Total | Folha(s) Residual(is) | Tipo da Folha Residual |
