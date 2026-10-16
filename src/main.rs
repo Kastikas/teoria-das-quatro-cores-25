@@ -4,10 +4,12 @@ mod fusion;
 mod graph;
 mod reducibility;
 mod set_cover;
+mod synthesizer;
 
 use analyzer::{LeafDiagnosis, MotifAnalysis};
 use graph::{find_angles, read_configurations, Configuration};
 use reducibility::ReducibilityEngine;
+use synthesizer::SynthesisPipeline;
 use std::env;
 use std::fs::File;
 use std::io::Write;
@@ -1393,6 +1395,121 @@ fn main() {
             }
             None => eprintln!("Configuração '{}' não encontrada em {}.", conf_target, conf_file),
         }
+        return;
+    }
+
+    if args.len() > 1 && args[1] == "synthesize-contractions" {
+        let conf_file = if args.len() > 2 {
+            &args[2]
+        } else {
+            "anc_tools/U_2822.conf"
+        };
+        let out_file = if args.len() > 3 {
+            &args[3]
+        } else {
+            "synthesized_contractions.conf"
+        };
+        let target_idx = if args.len() > 4 {
+            Some(args[4].clone())
+        } else {
+            None
+        };
+
+        let configs = match read_configurations(conf_file) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Erro ao ler {}: {}", conf_file, e);
+                return;
+            }
+        };
+
+        let selected: Vec<&Configuration> = if let Some(ref target) = target_idx {
+            if let Ok(idx) = target.parse::<usize>() {
+                if idx > 0 && idx <= configs.len() {
+                    vec![&configs[idx - 1]]
+                } else {
+                    configs
+                        .iter()
+                        .filter(|c| c.name == *target || c.id == idx)
+                        .collect()
+                }
+            } else {
+                configs.iter().filter(|c| c.name == *target).collect()
+            }
+        } else {
+            configs.iter().collect()
+        };
+
+        println!("================================================================================");
+        println!("PIPELINE RIGOROSO DE SÍNTESE TOPOLÓGICA (CONTRAÇÕES PLANAR)");
+        println!("================================================================================");
+        println!(
+            "Processando {} configurações base de {}...",
+            selected.len(),
+            conf_file
+        );
+
+        let mut total_contractible_edges = 0;
+        let mut total_rsst_admissible = 0;
+        let mut total_pure_d_reducible = 0;
+        let mut successful_confs = Vec::new();
+
+        for conf in selected {
+            let contractible = SynthesisPipeline::find_contractible_internal_edges(conf);
+            total_contractible_edges += contractible.len();
+
+            for (u, v) in contractible {
+                match SynthesisPipeline::contract_internal_edge(conf, u, v) {
+                    Ok(new_conf) => {
+                        total_rsst_admissible += 1;
+                        match SynthesisPipeline::validate_rigorous(&new_conf, &engine) {
+                            Ok(report) => {
+                                total_pure_d_reducible += 1;
+                                println!(
+                                    "  [SUCESSO D-REDUTÍVEL] {}: contração ({}, {}) -> Novo V={}, Novo I={} (Extensões: {})",
+                                    new_conf.name,
+                                    u,
+                                    v,
+                                    new_conf.verts(),
+                                    new_conf.verts() - new_conf.ring(),
+                                    report.extending_colorings
+                                );
+                                successful_confs.push(new_conf);
+                            }
+                            Err(e) => {
+                                if target_idx.is_some() {
+                                    println!("  [REJEITADO BIRKHOFF] contração ({}, {}): {}", u, v, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if target_idx.is_some() {
+                            println!("  [REJEITADO RSST] contração ({}, {}): {}", u, v, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("\n--- Relatório Final de Síntese ---");
+        println!("Arestas candidatas verificadas:          {}", total_contractible_edges);
+        println!("Grafos aprovados na Admissibilidade RSST: {}", total_rsst_admissible);
+        println!("Grafos CERTIFICADOS D-Redutíveis Puros:  {}", total_pure_d_reducible);
+
+        if !successful_confs.is_empty() {
+            let mut out = File::create(out_file).expect("Erro ao criar arquivo de saída");
+            for sc in &successful_confs {
+                let txt = format_configuration(sc);
+                out.write_all(txt.as_bytes()).unwrap();
+            }
+            println!(
+                "Salvas {} novas configurações certificadas em {}",
+                successful_confs.len(),
+                out_file
+            );
+        }
+        println!("================================================================================\n");
         return;
     }
 
