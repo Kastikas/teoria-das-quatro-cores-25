@@ -169,6 +169,25 @@ Abaixo está o registro sistemático dos 5 experimentos centrais conduzidos, org
 
 ---
 
+### Experimento 4.8: Mineração Combinatória em Larga Escala (Recombinação Geodésica e Contrações Paralelas)
+1. **O que foi sugerido:**  
+   Executar a mineração combinatória em larga escala utilizando o novo pipeline de síntese e recombinação topológica sobre os conjuntos de candidatos certificados (`strictly_certified_candidates_pool.conf`), focando nas famílias do anel $R=13$ (família dos super-candidatos 3234 e 3226) e do anel $R=14$ (família da Configuração 558).
+2. **O que foi feito:**  
+   - **Varredura Paralela de Contrações:** Execução de `synthesize-contractions` sobre as 262 configurações do pool, varrendo 2.214 arestas candidatas em 4 threads paralelas sob o funil dos 5 portões.
+   - **Crossover Geodésico no Anel $R=13$:** Execução de `recombine` sobre 101 pares compatíveis do anel 13 com métrica $L_1$ (`structural_degree_distance`), gerando 2.713 tentativas de cruzamento.
+   - **Crossover Geodésico no Anel $R=14$:** Execução de `recombine` sobre 51 pares compatíveis do anel 14 com métrica $L_1$, gerando 1.602 tentativas de cruzamento.
+   - **Consolidação e Auditoria:** Unificação dos resultados em [`data/pool/synthesized_superpool_33.conf`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/data/pool/synthesized_superpool_33.conf) e auditoria no verificador independente (`verify-file`).
+3. **O motivo pelo qual foi feito:**  
+   Explorar o espaço de triangulações vizinhas e contrações para produzir super-candidatos mais compactos ($I \le 8$) e com maior generalidade topológica, comprovando a viabilidade computacional e a pureza algébrica dos operadores em escala real.
+4. **Resultados:**  
+   - **33 novas configurações rigorosamente certificadas** geradas e salvas em `data/pool/synthesized_superpool_33.conf`:
+     * **3 configurações via contração:** 1 com $R=13, I=8$ (`2.584517966_f14_20_19_15_c_14_15`, graus internos $[5, 5, 5, 6, 6, 6, 7, 7]$) e 2 com $R=14, I=9$.
+     * **11 configurações via recombinação no anel $R=13$:** 4 com Hub Duplo ($\ge 2$ hubs 8/7), 6 com Hub Único e 1 sem hubs.
+     * **19 configurações via recombinação no anel $R=14$:** 9 com Hub Duplo ($\ge 2$ hubs 8/7), 9 com Hub Único e 1 sem hubs.
+   - **Auditoria Independente (`verify-file`):** 33/33 (100%) aprovadas em 8.19s com $C = 0$ (D-redutibilidade pura estrita, zero contratos de Kempe, sem cordas no anel).
+
+---
+
 ## 5. Tabela Comparativa dos 4 Quase-Pares Identificados
 
 | Par | Candidato D-Redutível | Geometria do Candidato | Cobertura Total | Folha(s) Residual(is) | Tipo da Folha Residual |
