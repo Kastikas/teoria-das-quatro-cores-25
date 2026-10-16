@@ -1,9 +1,11 @@
+mod analyzer;
 mod flipper;
 mod fusion;
 mod graph;
 mod reducibility;
 mod set_cover;
 
+use analyzer::{LeafDiagnosis, MotifAnalysis};
 use graph::{find_angles, read_configurations, Configuration};
 use reducibility::ReducibilityEngine;
 use std::env;
@@ -1280,6 +1282,116 @@ fn main() {
                 );
             }
             println!("================================================================================\n");
+        }
+        return;
+    }
+
+    if args.len() > 1 && args[1] == "inspect-motif" {
+        let path = if args.len() > 2 {
+            &args[2]
+        } else {
+            "01_modelo_629_rsst_canonico/unavoidable_629.conf"
+        };
+        let configs = match read_configurations(path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Erro ao ler arquivo de configurações {}: {}", path, e);
+                return;
+            }
+        };
+
+        if args.len() > 3 {
+            let target = &args[3];
+            let found = if let Ok(idx) = target.parse::<usize>() {
+                if idx > 0 && idx <= configs.len() {
+                    Some(&configs[idx - 1])
+                } else {
+                    configs.iter().find(|c| c.name == *target || c.id == idx)
+                }
+            } else {
+                configs.iter().find(|c| c.name == *target)
+            };
+
+            match found {
+                Some(conf) => {
+                    let analysis = MotifAnalysis::from_configuration(conf);
+                    analysis.display_summary();
+                }
+                None => eprintln!("Configuração '{}' não encontrada em {}.", target, path),
+            }
+        } else {
+            println!("Analisando motifs estruturais de {} configurações em {}...", configs.len(), path);
+            let mut double_hubs = 0;
+            let mut single_hubs = 0;
+            let mut no_hubs = 0;
+            let mut pure_d = 0;
+            let mut c_red = 0;
+
+            for conf in &configs {
+                let analysis = MotifAnalysis::from_configuration(conf);
+                if analysis.is_pure_d_candidate {
+                    pure_d += 1;
+                } else {
+                    c_red += 1;
+                }
+                match analysis.internal_hubs.len() {
+                    0 => no_hubs += 1,
+                    1 => single_hubs += 1,
+                    _ => double_hubs += 1,
+                }
+            }
+
+            println!("================================================================================");
+            println!("RESUMO DO CENSO DE MOTIFS TOPOLÓGICOS: {}", path);
+            println!("================================================================================");
+            println!("Total de Configurações: {}", configs.len());
+            println!("  - D-Redutíveis Puras (C=0):  {} ({:.1}%)", pure_d, 100.0 * pure_d as f64 / configs.len() as f64);
+            println!("  - C-Redutíveis (C>0):        {} ({:.1}%)", c_red, 100.0 * c_red as f64 / configs.len() as f64);
+            println!("Distribuição de Hubs Internos (Grau >= 7):");
+            println!("  - Hub Duplo (>= 2 hubs 8/7): {} ({:.1}%)", double_hubs, 100.0 * double_hubs as f64 / configs.len() as f64);
+            println!("  - Hub Único (exatamente 1):  {} ({:.1}%)", single_hubs, 100.0 * single_hubs as f64 / configs.len() as f64);
+            println!("  - Sem Hubs (grau max <= 6):  {} ({:.1}%)", no_hubs, 100.0 * no_hubs as f64 / configs.len() as f64);
+            println!("================================================================================\n");
+        }
+        return;
+    }
+
+    if args.len() > 1 && args[1] == "diagnose-leaf" {
+        if args.len() < 6 {
+            println!("Uso: quatro_cores diagnose-leaf <center_deg> <axle_str> <conf_file> <conf_idx_or_id> [<leaf_line>]");
+            println!("Exemplo: quatro_cores diagnose-leaf 8 \"1:7+ 2:5 3:6 4:5 5:7+ 6:5 7:5 8:5\" 01_modelo_629_rsst_canonico/unavoidable_629.conf 326 204");
+            return;
+        }
+        let center_deg = args[2].parse::<usize>().unwrap_or(8);
+        let axle_str = &args[3];
+        let conf_file = &args[4];
+        let conf_target = &args[5];
+        let leaf_line = if args.len() > 6 { args[6].parse::<usize>().unwrap_or(0) } else { 0 };
+
+        let configs = match read_configurations(conf_file) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Erro ao ler {}: {}", conf_file, e);
+                return;
+            }
+        };
+
+        let found = if let Ok(idx) = conf_target.parse::<usize>() {
+            if idx > 0 && idx <= configs.len() {
+                Some(&configs[idx - 1])
+            } else {
+                configs.iter().find(|c| c.name == *conf_target || c.id == idx)
+            }
+        } else {
+            configs.iter().find(|c| c.name == *conf_target)
+        };
+
+        match found {
+            Some(conf) => {
+                let diag = LeafDiagnosis::diagnose(center_deg, axle_str, leaf_line, conf);
+                diag.display();
+            }
+            None => eprintln!("Configuração '{}' não encontrada em {}.", conf_target, conf_file),
         }
         return;
     }
