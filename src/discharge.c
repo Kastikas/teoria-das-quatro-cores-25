@@ -51,17 +51,17 @@ int used_confs[10000];
 int total_reduces = 0;
 int global_noconf = 0;
 #define MAXVAL     12
-#define CARTVERT   5*MAXVAL+2	/* domain of l_A, u_A, where A is an axle */
+#define CARTVERT   (8*MAXVAL+2)	/* domain of l_A, u_A, where A is an axle */
 char    RULEFILE[256];           /* file containing rules */     // jps (used to be defined as "rules", now entered on command line)
 char    UNAVSET[256];            /* file containing unav set */  // jps (used to be defined as "unavoidable.conf", now entered on command line)
 #define OUTLETFILE "outlet.et"	/* outlets will be written into this file */
 #define INFTY      12	/* the "12" in the definition of limited part  */
 #define MAXOUTLETS 500	/* max number of outlets */ // jps
 #define MAXSTR     256	/* max length of an input string */
-#define MAXSYM     50	/* max number of symmetries */
-#define MAXELIST   134	/* length of edgelist[a][b] */
-#define MAXASTACK  5	/* max height of Astack (see "Reduce") */
-#define MAXLEV     17	/* max level of an input line + 1 */ // jps
+#define MAXSYM     500	/* max number of symmetries */
+#define MAXELIST   256	/* length of edgelist[a][b] */
+#define MAXASTACK  64	/* max height of Astack (see "Reduce") */
+#define MAXLEV     25	/* max level of an input line + 1 */ // jps
 
 /* print modes */
 #define PRTALL  4	/* maximum information */
@@ -90,9 +90,9 @@ typedef struct {
    int number;	/* +/-n for outlet corresponding to rule n, always !=0 */
    int nolines;	/* |M(T)| */
    int value;
-   int pos[25]; // jps
-   int low[25]; // jps
-   int upp[25]; // jps
+   int pos[32]; // jps
+   int low[32]; // jps
+   int upp[32]; // jps
 } tp_outlet;
 typedef struct {
    int n;
@@ -113,7 +113,7 @@ typedef struct {
    int xi;
 } tp_query;
 typedef tp_query tp_question[VERTS];
-typedef int tp_edgelist[12][9][MAXELIST];
+typedef int tp_edgelist[13][13][MAXELIST];
 
 
 /* function prototypes */
@@ -124,6 +124,8 @@ void CheckCondition(char *, tp_axle *, tp_outlet[], int *, int, int, int);
 void CheckSymmetry(char *, tp_axle *, tp_outlet[], int, int);
 void CheckHubcap(tp_axle *, char[], int, int);
 void CheckBound(tp_axle *, tp_posout[], int[], int, int, int, int, int);
+int CheckGlobalBound(tp_axle *, int, int);
+int CheckGlobalBoundRec(tp_axle *, tp_posout[], int[], int, int, int, int, int);
 int OutletForced(tp_axle *, tp_outlet *, int);
 int OutletPermitted(tp_axle *, tp_outlet *, int);
 int ReflForced(tp_axle *, tp_outlet *, int);
@@ -158,6 +160,8 @@ void CheckCondition();
 void CheckSymmetry();
 void CheckHubcap();
 void CheckBound();
+int CheckGlobalBound();
+int CheckGlobalBoundRec();
 int OutletForced();
 int OutletPermitted();
 int ReflForced();
@@ -318,7 +322,7 @@ char *av[];
       exit(26);
    }
    axles->low[0] = axles->upp[0] = deg;
-   for (i = 1; i <= 5 * deg; i++) {
+   for (i = 1; i <= 8 * deg; i++) {
       axles->low[i] = 5;
       axles->upp[i] = INFTY;
    }
@@ -522,9 +526,9 @@ int print;	/* print mode */
       Error("Syntax error", lineno);
 
    /* check condition and compatibility with A */
-   if (n < 1 || n > 5 * deg)
+   if (n < 1 || n > 8 * deg)
       Error("Invalid vertex in condition", lineno);
-   if (m < -8 || m > 9 || (m > -5 && m < 6))
+   if (m < -11 || m > 11 || (m > -5 && m < 6))
       Error("Invalid condition", lineno);
    j = (n - 1) / deg;
    i = (n - 1) % deg + 1;
@@ -543,9 +547,9 @@ int print;	/* print mode */
       (A + 1)->upp[n] = -m;
    }	/* new upper bound */
 
-   /* remember symmetry unless contains a fan vertex */
+   /* remember symmetry */
    for (i = 0, good = 1; i <= lev; i++)
-      if (cond[i].n > 2 * deg || cond[i].n < 1)
+      if (cond[i].n > 8 * deg || cond[i].n < 1)
 	 good = 0;
    if (good) {	/* remember symmetry */
       if (*pnosym >= MAXSYM)
@@ -658,6 +662,11 @@ char str[];	/* input line */
    }
    /* This part is executed if str!=NULL */
    deg = A->low[0];
+   if (strstr(str, "GLOBAL") != NULL) {
+      if (!CheckGlobalBound(A, lineno, print))
+         Error("Global coupled discharge bound failed", lineno);
+      return;
+   }
    for (ch = str; *ch == ' '; ch++);
    for (; *ch != ' '; ch++);
    for (; *ch == ' '; ch++);
@@ -811,7 +820,7 @@ tp_axle *A;
 	 Indent(depth, "Reducible. Case done.\n");
       return;
    }
-   ALLOC(sprime, 2 * MAXOUTLETS + 1, int);
+   ALLOC(sprime, MAXVAL * MAXOUTLETS + 1, int);
    ALLOC(AA, 1, tp_axle);
    for (PO = posout + pos; s[pos] < 99; pos++, PO++) {
       if (s[pos] || PO->T->value < 0)
@@ -872,6 +881,123 @@ tp_axle *A;
    Error("Unexpected error 101", lineno);
 }/* CheckBound */
 
+/*************************************************************************
+     CheckGlobalBound
+ Verifica de forma acoplada em todos os raios x=1..deg se a carga total
+ recebida pelo vertice central pode exceder maxch = 10 * (deg - 6).
+ Retorna 1 se a folha fecha (por desigualdade <= maxch ou Reduce), 0 se falhar.
+*************************************************************************/
+int
+CheckGlobalBoundRec(A, posout, s, maxch, pos, depth, lineno, print)
+int maxch, s[], pos, depth, lineno, print;
+tp_posout posout[];
+tp_axle *A;
+{
+   int deg, i, p, x, good, forcedch, allowedch;
+   int *sprime;
+   tp_axle *AA;
+   tp_posout *PO;
+
+   deg = A->low[0];
+   forcedch = allowedch = 0;
+   for (i = 0, PO = posout; s[i] < 99; i++, PO++) {
+      if (s[i] > 0)
+         forcedch += PO->T->value;
+      if (s[i])
+         continue;
+      if (OutletForced(A, PO->T, PO->x)) {
+         s[i] = 1;
+         forcedch += PO->T->value;
+      } else if (!OutletPermitted(A, PO->T, PO->x))
+         s[i] = -1;
+      else if (PO->T->value > 0)
+         allowedch += PO->T->value;
+   }
+
+   /* 1. Desigualdade global satisfeita: carga final <= 0 */
+   if (forcedch + allowedch <= maxch)
+      return (1);
+
+   /* 2. Carga forcada estourou maxch: exige configuracao redutivel */
+   if (forcedch > maxch) {
+      return (CheckSingleAxleReducible(A) ? 1 : 0);
+   }
+
+   ALLOC(sprime, MAXVAL * MAXOUTLETS + 1, int);
+   ALLOC(AA, 1, tp_axle);
+   for (PO = posout + pos; s[pos] < 99; pos++, PO++) {
+      if (s[pos] || PO->T->value < 0)
+         continue;
+      x = PO->x;
+
+      CopyAxle(AA, A);
+      for (i = 0; i < PO->T->nolines; ++i) {
+         p = PO->T->pos[i];
+         p = x - 1 + (p - 1) % deg < deg ? p + x - 1 : p + x - 1 - deg;
+         if (PO->T->low[i] > AA->low[p])
+            AA->low[p] = PO->T->low[i];
+         if (PO->T->upp[i] < AA->upp[p])
+            AA->upp[p] = PO->T->upp[i];
+         if (AA->low[p] > AA->upp[p]) {
+            free(sprime);
+            free(AA);
+            return (0);
+         }
+      }
+
+      good = 1;
+      for (i = 0; i < pos; i++)
+         if (s[i] == -1 && OutletForced(AA, posout[i].T, posout[i].x)) {
+            good = 0;
+            break;
+         }
+      if (good) {
+         for (i = 0; (sprime[i] = s[i]) < 99; ++i);
+         sprime[pos] = 1;
+         if (!CheckGlobalBoundRec(AA, posout, sprime, maxch, pos + 1, depth + 1, lineno, print)) {
+            free(sprime);
+            free(AA);
+            return (0);
+         }
+      }
+      s[pos] = -1;
+      allowedch -= PO->T->value;
+      if (allowedch + forcedch <= maxch) {
+         free(sprime);
+         free(AA);
+         return (1);
+      }
+   }
+   free(sprime);
+   free(AA);
+   return (0);
+}/* CheckGlobalBoundRec */
+
+int
+CheckGlobalBound(A, lineno, print)
+tp_axle *A;
+int lineno, print;
+{
+   static tp_posout global_posout[MAXVAL * MAXOUTLETS];
+   int s[MAXVAL * MAXOUTLETS + 1];
+   int deg = A->low[0];
+   int x, j, idx = 0;
+
+   if (deg < 7 || global_nouts == 0)
+      return (0);
+
+   for (x = 1; x <= deg; x++) {
+      for (j = 0; j < global_nouts; j++) {
+         global_posout[idx].T = global_outlets + j;
+         global_posout[idx].x = x;
+         s[idx] = 0;
+         idx++;
+      }
+   }
+   s[idx] = 99;
+   return CheckGlobalBoundRec(A, global_posout, s, 10 * (deg - 6), 0, 0, lineno, print);
+}/* CheckGlobalBound */
+
 
 /*********************************************************************
             OutletForced
@@ -931,23 +1057,36 @@ int x;
 tp_outlet *T;
 tp_axle *A;
 {
-   int deg, i, p, q;
+   int deg, i, p, q, layer, s, s_refl, k_refl, layer_refl;
 
    deg = A->low[0];
    x--;
    for (i = 0; i < T->nolines; ++i) {
       p = T->pos[i];
       p = x + (p - 1) % deg < deg ? p + x : p + x - deg;
-      if (p < 1 || p > 2 * deg)
-	 return (0);
+      if (p < 1 || p > 8 * deg)
+         return (0);
       else if (p <= deg)
-	 q = deg - p + 1;
+         q = deg - p + 1;
       else if (p < 2 * deg)
-	 q = 3 * deg - p;
-      else
-	 q = 2 * deg;
+         q = 3 * deg - p;
+      else if (p == 2 * deg)
+         q = 2 * deg;
+      else {
+         /* Reflexao exata de vertice de leque (camadas 2..7) */
+         layer = (p - 1) / deg;
+         s = (p - 1) % deg + 1;
+         s_refl = deg - s + 1;
+         if (A->low[s_refl] != A->upp[s_refl])
+            return (0);
+         k_refl = A->low[s_refl];
+         if (k_refl < layer + 4 || k_refl > 11)
+            return (0);
+         layer_refl = (k_refl - 2) - layer;
+         q = layer_refl * deg + s_refl;
+      }
       if (T->low[i] > A->low[q] || T->upp[i] < A->upp[q])
-	 return (0);
+         return (0);
    }
    return (T->value);
 }/* ReflForced */
@@ -975,7 +1114,7 @@ tp_outlet *T;
 
 
 #define BUCKET_DEG_A 12
-#define BUCKET_DEG_B 9
+#define BUCKET_DEG_B 12
 static int bucket_count[BUCKET_DEG_A][BUCKET_DEG_B];
 static int *bucket_confs[BUCKET_DEG_A][BUCKET_DEG_B];
 static int unbucketed_count = 0;
@@ -1094,7 +1233,7 @@ tp_axle *A;
          int found_any = 0;
          (void) printf("LEAF_MATRIX %d:", lineno);
          for (a = 5; a <= 11; a++) {
-            for (b = 5; b <= 8 && b <= a; b++) {
+            for (b = 5; b < BUCKET_DEG_B && b <= a; b++) {
                if (edgelist[a][b][0] == 0) continue;
                b_cnt = bucket_count[a][b];
                if (b_cnt == 0) continue;
@@ -1127,7 +1266,7 @@ tp_axle *A;
       int first_h = -1;
       static tp_vertices first_image;
       for (a = 5; a <= 11; a++) {
-         for (b = 5; b <= 8 && b <= a; b++) {
+         for (b = 5; b < BUCKET_DEG_B && b <= a; b++) {
             if (edgelist[a][b][0] == 0) continue;
             b_cnt = bucket_count[a][b];
             if (b_cnt == 0) continue;
@@ -1312,17 +1451,10 @@ int out_verts[];
       /* Fan vertices exist if and only if spoke s degree is fixed */
       if (A->low[s] == A->upp[s]) {
          int deg_s = A->low[s];
-         if (deg_s >= 6 && deg_s <= 8) {
-            int f1 = 2 * d + s;
-            if (A->low[f1] < A->upp[f1]) out_verts[count++] = f1;
-         }
-         if (deg_s >= 7 && deg_s <= 8) {
-            int f2 = 3 * d + s;
-            if (A->low[f2] < A->upp[f2]) out_verts[count++] = f2;
-         }
-         if (deg_s == 8) {
-            int f3 = 4 * d + s;
-            if (A->low[f3] < A->upp[f3]) out_verts[count++] = f3;
+         int layer;
+         for (layer = 2; layer <= deg_s - 4 && layer <= 7; layer++) {
+            int fv = layer * d + s;
+            if (A->low[fv] < A->upp[fv]) out_verts[count++] = fv;
          }
       }
    }
@@ -1386,7 +1518,7 @@ int rem_depth;
    n_cands = GetBranchableVertices(A, candidates);
    for (i = 0; i < n_cands; i++) {
       v = candidates[i];
-      for (m = A->low[v] + 1; m <= A->upp[v] && m <= 9; m++) {
+      for (m = A->low[v] + 1; m <= A->upp[v] && m <= 11; m++) {
          tp_axle Left = *A;
          tp_axle Right = *A;
          tp_deepen_node *right_tree, *left_tree;
@@ -1497,16 +1629,16 @@ int lineno;
    verts = L[0][0];	/* no verts of free completion of L */
    ring = L[0][1];	/* ring-size of L */
    Getadjmat(A, adjmat);
-   for (u = 0; u <= 5 * deg; u++)
-      for (v = 0; v <= 5 * deg; v++)
+   for (u = 0; u <= 8 * deg; u++)
+      for (v = 0; v <= 8 * deg; v++)
 	 X[u][v] = 0;	/* Adjacency matrix of image */
-   for (fu = 0; fu <= 5 * deg; fu++)
+   for (fu = 0; fu <= 8 * deg; fu++)
       used[fu] = 0;	/* to mark vertices that are in the image */
 
    /* first check that image is a valid 1-1 map */
    for (u = ring + 1; u <= verts; u++) {
       fu = image[u];
-      if (fu < 0 || fu > 5 * deg || used[fu])
+      if (fu < 0 || fu > 8 * deg || used[fu])
 	 Error("Isomorphism error 1", lineno);
       used[fu] = 1;
       if (L[u][0] != A->upp[fu])
@@ -1566,33 +1698,24 @@ int lineno;
       a = h + deg;
       INDUCHECK(used[h], used[a], X[h][a]);
       INDUCHECK(used[i], used[a], X[i][a]);
-      if (A->low[i] != A->upp[i])
+      if (A->low[i] != A->upp[i] || A->low[i] > 11)
 	 continue;
       b = deg + i;
       if (A->low[i] == 5) {
 	 INDUCHECK(used[a], used[b], X[a][b]);
 	 continue;
       }
-      c = 2 * deg + i;
-      INDUCHECK(used[a], used[c], X[a][c]);
-      INDUCHECK(used[c], used[i], X[c][i]);
-      if (A->low[i] == 6) {
-	 INDUCHECK(used[c], used[b], X[c][b]);
-	 continue;
+      {
+	 int k_deg = A->low[i];
+	 int m_layer, prev_v = a, curr_v;
+	 for (m_layer = 2; m_layer <= k_deg - 4; m_layer++) {
+	    curr_v = m_layer * deg + i;
+	    INDUCHECK(used[prev_v], used[curr_v], X[prev_v][curr_v]);
+	    INDUCHECK(used[curr_v], used[i], X[curr_v][i]);
+	    prev_v = curr_v;
+	 }
+	 INDUCHECK(used[prev_v], used[b], X[prev_v][b]);
       }
-      d = 3 * deg + i;
-      INDUCHECK(used[c], used[d], X[c][d]);
-      INDUCHECK(used[d], used[i], X[d][i]);
-      if (A->low[i] == 7) {
-	 INDUCHECK(used[d], used[b], X[d][b]);
-	 continue;
-      }
-      e = 4 * deg + i;
-      if (A->low[i] != 8)
-	 Error("Unexpected error in CheckIso", lineno);
-      INDUCHECK(used[e], used[d], X[e][d]);
-      INDUCHECK(used[e], used[i], X[e][i]);
-      INDUCHECK(used[e], used[b], X[e][b]);
    }
 }/* CheckIso */
 
@@ -1608,7 +1731,7 @@ tp_axle *A, *B;
 {
    int j, deg5;
 
-   deg5 = 5 * B->upp[0];
+   deg5 = 8 * B->upp[0];
    for (j = 0; j <= deg5; j++) {
       A->low[j] = B->low[j];
       A->upp[j] = B->upp[j];
@@ -1628,7 +1751,7 @@ tp_axle *A;
    int i, deg;
 
    deg = A->upp[0];
-   for (i = 1; i <= 5 * deg; ++i) {
+   for (i = 1; i <= 8 * deg; ++i) {
       if (A->low[i] == 5 && A->upp[i] == INFTY)
 	 continue;
       (void) printf(" %d:%d", i, A->low[i]);
@@ -1690,7 +1813,7 @@ tp_adjmat adjmat;
       adjmat[i][h] = a;
       adjmat[a][i] = h;
       adjmat[h][a] = i;
-      if (A->upp[i] < 9)
+      if (A->upp[i] < 12)
 	 DoFan(deg, i, A->upp[i], adjmat);
    }
 }/* Getadjmat */
@@ -1705,43 +1828,27 @@ DoFan(deg, i, k, adjmat)
 int deg, i, k;
 tp_adjmat adjmat;
 {
-   int a, b, c, d, e;
+   int a, b, m, u_prev, u_curr;
+   int fan_seq[9]; /* sequencia: [a, f1, f2, ..., f_{k-5}, b] */
+   int len = 0;
 
-   a = i == 1 ? 2 * deg : deg + i - 1;
+   if (k < 5 || k > 11) return;
+   a = (i == 1) ? 2 * deg : deg + i - 1;
    b = deg + i;
-   if (k == 5) {
-      adjmat[i][a] = b;
-      adjmat[a][b] = i;
-      adjmat[b][i] = a;
-      return;
+
+   fan_seq[len++] = a;
+   for (m = 2; m <= k - 4; m++) {
+      fan_seq[len++] = m * deg + i;
    }
-   c = 2 * deg + i;
-   adjmat[i][a] = c;
-   adjmat[a][c] = i;
-   adjmat[c][i] = a;
-   if (k == 6) {
-      adjmat[i][c] = b;
-      adjmat[c][b] = i;
-      adjmat[b][i] = c;
-      return;
+   fan_seq[len++] = b;
+
+   for (m = 0; m < len - 1; m++) {
+      u_prev = fan_seq[m];
+      u_curr = fan_seq[m + 1];
+      adjmat[i][u_prev] = u_curr;
+      adjmat[u_prev][u_curr] = i;
+      adjmat[u_curr][i] = u_prev;
    }
-   d = 3 * deg + i;
-   adjmat[i][c] = d;
-   adjmat[c][d] = i;
-   adjmat[d][i] = c;
-   if (k == 7) {
-      adjmat[i][d] = b;
-      adjmat[d][b] = i;
-      adjmat[b][i] = d;
-      return;
-   }
-   e = 4 * deg + i;
-   adjmat[i][d] = e;
-   adjmat[d][e] = i;
-   adjmat[e][i] = d;
-   adjmat[i][e] = b;
-   adjmat[e][b] = i;
-   adjmat[b][i] = e;
 }/* DoFan */
 
 
@@ -2164,12 +2271,12 @@ tp_outlet *T;
       if (j >= 2) {	/* now computing T->pos[i] */
 	 u = phi[X[z[j]]];
 	 v = phi[Y[z[j]]];
-	 if (u < 0 || u > 5 * deg || v < 0 || v > 5 * deg)
+	 if (u < 0 || u > 8 * deg || v < 0 || v > 8 * deg)
 	    Error("Rule references illegal vertex", lineno);
 	 T->pos[i] = phi[z[j]] = adjmat[u][v];
       }
       u = T->pos[i];
-      if (u <= 0 || u > 5 * deg)
+      if (u <= 0 || u > 8 * deg)
 	 Error("Rule uses illegal vertex", lineno);
       if (u <= deg && T->low[i] == T->upp[i])
 	 DoFan(deg, u, T->low[i], adjmat);	/* update adjmat */
@@ -2299,7 +2406,7 @@ tp_edgelist edgelist;
 
    deg = A->upp[0];
    for (a = 5; a <= 11; a++)
-      for (b = 5; b <= 8 && b <= a; b++)
+      for (b = 5; b < BUCKET_DEG_B && b <= a; b++)
 	 edgelist[a][b][0] = 0;
    for (i = 1; i <= deg; i++) {
       AddToList(edgelist, 0, i, A->upp);
@@ -2309,36 +2416,24 @@ tp_edgelist edgelist;
       b = deg + i;
       AddToList(edgelist, i, a, A->upp);
       AddToList(edgelist, i, b, A->upp);
-      if (A->low[i] != A->upp[i])
+      if (A->low[i] != A->upp[i] || A->upp[i] > 11)
 	 continue;
       /* in this case we are not interested in the fan edges */
       if (A->upp[i] == 5) {
 	 AddToList(edgelist, a, b, A->upp);
 	 continue;
       }
-      c = 2 * deg + i;
-      AddToList(edgelist, a, c, A->upp);
-      AddToList(edgelist, i, c, A->upp);
-      if (A->upp[i] == 6) {
-	 AddToList(edgelist, b, c, A->upp);
-	 continue;
+      {
+	 int k_deg = A->upp[i];
+	 int m_layer, prev_v = a, curr_v;
+	 for (m_layer = 2; m_layer <= k_deg - 4; m_layer++) {
+	    curr_v = m_layer * deg + i;
+	    AddToList(edgelist, prev_v, curr_v, A->upp);
+	    AddToList(edgelist, i, curr_v, A->upp);
+	    prev_v = curr_v;
+	 }
+	 AddToList(edgelist, b, prev_v, A->upp);
       }
-      d = 3 * deg + i;
-      AddToList(edgelist, c, d, A->upp);
-      AddToList(edgelist, i, d, A->upp);
-      if (A->upp[i] == 7) {
-	 AddToList(edgelist, b, d, A->upp);
-	 continue;
-      }
-      if (A->upp[i] != 8) {
-	 (void) fflush(stdout);
-	 (void) fprintf(stderr, "Unexpected error in `GetEdgeList'\n");
-	 exit(36);
-      }
-      e = 4 * deg + i;
-      AddToList(edgelist, d, e, A->upp);
-      AddToList(edgelist, i, e, A->upp);
-      AddToList(edgelist, b, e, A->upp);
    }
 }/* GetEdgeList */
 

@@ -63,6 +63,72 @@ impl SynthesisPipeline {
         Ok(report)
     }
 
+    /// Tenta sintetizar um contrato esparso C-redutível estritamente válido (1 a 2 arestas)
+    /// caso a configuração não seja D-redutível pura.
+    /// Preenche `conf.contract_edges` e `conf.set_max_cons_subset(nlive)` se encontrar.
+    #[allow(dead_code)]
+    pub fn try_synthesize_sparse_contract(
+        conf: &mut Configuration,
+        base_angles: &crate::graph::Angles,
+        engine: &ReducibilityEngine,
+        live: &[u8],
+        nlive: usize,
+    ) -> bool {
+        let mut edgeno = [[0usize; crate::graph::VERTS]; crate::graph::VERTS];
+        let total_edges = crate::graph::strip(&conf.mat, &mut edgeno);
+        let triangles = crate::graph::extract_triangles(conf, &edgeno);
+        let r = conf.ring();
+        let n = conf.verts();
+
+        // Mapeia cada índice de aresta interna (e > r) para seu par de vértices (u, v)
+        let mut edge_to_verts = vec![(0usize, 0usize); total_edges + 1];
+        for u in 1..=n {
+            for h in 1..=conf.mat[u][0] {
+                let v = conf.mat[u][h];
+                if u < v {
+                    let e = edgeno[u][v];
+                    if e > r && e <= total_edges {
+                        edge_to_verts[e] = (u, v);
+                    }
+                }
+            }
+        }
+
+        // 1. Tenta contratos de 1 aresta (C = 1)
+        for e1 in (r + 1)..=total_edges {
+            if edge_to_verts[e1] == (0, 0) { continue; }
+            let c_angles = crate::graph::build_contract_angles(base_angles, &triangles, nlive, &[e1]);
+            if !c_angles.is_sparse { continue; }
+            conf.contract_edges = vec![edge_to_verts[e1]];
+            if crate::graph::validate_sparse_contract(conf, &c_angles).is_ok()
+                && engine.check_contract(&c_angles, live, nlive)
+            {
+                conf.set_max_cons_subset(nlive);
+                return true;
+            }
+        }
+
+        // 2. Tenta contratos esparsos de 2 arestas (C = 2)
+        for e1 in (r + 1)..=total_edges {
+            if edge_to_verts[e1] == (0, 0) { continue; }
+            for e2 in (e1 + 1)..=total_edges {
+                if edge_to_verts[e2] == (0, 0) { continue; }
+                let c_angles = crate::graph::build_contract_angles(base_angles, &triangles, nlive, &[e1, e2]);
+                if !c_angles.is_sparse { continue; }
+                conf.contract_edges = vec![edge_to_verts[e1], edge_to_verts[e2]];
+                if crate::graph::validate_sparse_contract(conf, &c_angles).is_ok()
+                    && engine.check_contract(&c_angles, live, nlive)
+                {
+                    conf.set_max_cons_subset(nlive);
+                    return true;
+                }
+            }
+        }
+
+        conf.contract_edges.clear();
+        false
+    }
+
     /// Executa a contração topológica de uma aresta interna (u, v) onde u, v > R.
     /// Preserva a planaridade combinatorial e a ordem cíclica de faces.
     pub fn contract_internal_edge(
@@ -1030,5 +1096,58 @@ mod tests {
         assert_eq!(stats.total_input_configs, 1);
         // Como o diamante de Birkhoff não tem arestas contractíveis admissíveis de grau >= 5, lista retornada é vazia
         assert_eq!(unique.len(), 0);
+    }
+
+    #[test]
+    fn test_revaluate_cand3234_contractions() {
+        let mut conf = Configuration::new(2605, 22, 13, 8294);
+        conf.set_vertex(1, &[2, 22, 13]);
+        conf.set_vertex(2, &[3, 21, 22, 1]);
+        conf.set_vertex(3, &[4, 17, 21, 2]);
+        conf.set_vertex(4, &[5, 17, 3]);
+        conf.set_vertex(5, &[6, 19, 17, 4]);
+        conf.set_vertex(6, &[7, 19, 5]);
+        conf.set_vertex(7, &[8, 15, 19, 6]);
+        conf.set_vertex(8, &[9, 16, 15, 7]);
+        conf.set_vertex(9, &[10, 18, 16, 8]);
+        conf.set_vertex(10, &[11, 18, 9]);
+        conf.set_vertex(11, &[12, 20, 18, 10]);
+        conf.set_vertex(12, &[13, 20, 11]);
+        conf.set_vertex(13, &[1, 22, 20, 12]);
+        conf.set_vertex(14, &[17, 15, 16, 18, 20]);
+        conf.set_vertex(15, &[8, 16, 14, 17, 19, 7]);
+        conf.set_vertex(16, &[18, 14, 15, 8, 9]);
+        conf.set_vertex(17, &[5, 19, 15, 14, 20, 21, 3, 4]);
+        conf.set_vertex(18, &[20, 14, 16, 9, 10, 11]);
+        conf.set_vertex(19, &[7, 15, 17, 5, 6]);
+        conf.set_vertex(20, &[22, 21, 17, 14, 18, 11, 12, 13]);
+        conf.set_vertex(21, &[3, 17, 20, 22, 2]);
+        conf.set_vertex(22, &[2, 21, 20, 13, 1]);
+
+        let contractible = SynthesisPipeline::find_contractible_internal_edges(&conf);
+        assert_eq!(contractible.len(), 7, "Candidato 3234 deve ter exatamente 7 arestas internas contractíveis");
+
+        let engine = ReducibilityEngine::new();
+        let mut d_reducible_count = 0;
+        let mut c_reducible_count = 0;
+
+        for &(u, v) in &contractible {
+            let mut contracted = SynthesisPipeline::contract_internal_edge(&conf, u, v)
+                .expect("Contração topológica deve ser válida");
+            assert_eq!(contracted.verts(), 21);
+            assert_eq!(contracted.ring(), 13);
+
+            let base_angles = crate::graph::find_angles(&contracted);
+            let report = engine.test_configuration(&contracted, &base_angles);
+            if report.is_d_reducible {
+                d_reducible_count += 1;
+            } else {
+                let (live, nlive) = engine.compute_consistent_live(&contracted, &base_angles);
+                if nlive > 0 && SynthesisPipeline::try_synthesize_sparse_contract(&mut contracted, &base_angles, &engine, &live, nlive) {
+                    c_reducible_count += 1;
+                }
+            }
+        }
+        println!("Candidato 3234 contrações: D-redutíveis = {}, C-redutíveis = {}", d_reducible_count, c_reducible_count);
     }
 }
