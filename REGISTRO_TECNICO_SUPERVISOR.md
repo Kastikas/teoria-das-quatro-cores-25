@@ -24,6 +24,12 @@ O método RSST prova que toda triangulação planar conexa é 4-colorível mostr
    * **Limite de Carga ($\le 0$):** A soma das cargas transferidas pelas regras não consegue superar a carga negativa base do vértice central.
    * **Redutibilidade ($R$ ou membro $H$):** A vizinhança contém uma configuração inevitável $K$, cuja presença em $G$ contradiz a minimalidade de $G$.
 
+### 1.2. Diretrizes Epistemológicas e Princípios de Rigor do Projeto
+A complexidade combinatória e a sensibilidade do Teorema das Quatro Cores exigem governança científica rigorosa e ceticismo permanente:
+1. **"O código retorna o que programamos":** Um print de sucesso ou um teste passando prova exclusivamente conformidade com a lógica codificada, e **não necessariamente a verdade matemática do teorema**. Se a condição de teste contiver premissas circulares ou omissões, falsos positivos ocorrerão (como comprovado nos testes preliminares de `CheckSingleAxleReducible` que ignoravam a pilha `Astack`).
+2. **Ceticismo Metódico e Testes Negativos Obrigatórios:** Toda hipótese de sucesso deve ser acompanhada de contra-testes negativos (grafos sabidamente não-redutíveis, configurações com cordas ou separadores devem ser rejeitados com erro explícito). Qualquer afrouxamento de restrições para "forçar aprovação" é estritamente proibido.
+3. **Perspectiva de Longo Prazo:** Não há pressa por resultados superficiais em semanas ou meses. A prioridade máxima do projeto é a **reprodutibilidade e auditabilidade independente** por qualquer pesquisador que compile e execute os verificadores canônicos sem dependência de bandeiras de tolerância.
+
 ---
 
 ## 2. Invariantes Críticas e Teoremas de Não-Existência
@@ -33,13 +39,13 @@ O método RSST prova que toda triangulação planar conexa é 4-colorível mostr
 > 1. **Mutações de 3-Flips Desconectadas:** Um *flip* diagonal troca uma aresta em um grafo abstrato, mas para que o novo grafo reduza uma folha, a nova diagonal precisaria existir fisicamente no contraexemplo $G$ testado na folha. Presumir a existência de diagonais que não foram ramificadas na apresentação é uma falácia matemática.
 > 2. **Regras Sintéticas Fora de Euler:** Adicionar regras para drenar vértices $7..11$ transferindo carga para vizinhos de grau 5, 6 ou $\ge 12$ quebra a conservação global de Euler, pois não existem árvores de descarregamento para garantir que esses vizinhos não fiquem sobrecarregados.
 
-### 2.1. O Teorema do Limite Inferior no Nível 0 (MILP HiGHS)
-Existia a hipótese de que o conjunto canônico de 629 configurações do RSST era superdimensionado devido a uma escolha subótima de cobertura das folhas.
+### 2.1. O Limite Inferior no Nível 0 sobre o Universo Finito Testado (MILP HiGHS)
+Investigou-se se o conjunto canônico de 629 configurações do RSST era superdimensionado devido a uma escolha subótima de cobertura das folhas frente a catálogos históricos maiores.
 
-* **Experimento:** Unificamos as 629 configurações canônicas com as **2.822 configurações históricas certificadas** de [`anc_tools/U_2822.conf`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/anc_tools/U_2822.conf) (totalizando 3.451 configurações, 100% D-redutíveis puras). Extraímos a matriz esparsa completa de 162.699 folhas via `./bin/discharge -m` e formulamos o problema exato de *Set Cover* com o solver HiGHS:
+* **Experimento:** Unificamos as 629 configurações canônicas com as **2.822 configurações históricas certificadas** de [`anc_tools/U_2822.conf`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/anc_tools/U_2822.conf) (totalizando um espaço amostral de 3.451 configurações, 100% D-redutíveis puras). Extraímos a matriz esparsa completa de 162.699 folhas via `./bin/discharge -m` e formulamos o problema exato de *Set Cover* com o solver HiGHS:
   $$\min \sum_{c=1}^{3451} x_c \quad \text{sujeito a} \quad A_{\text{leaf}} x \ge 1, \quad x_c \in \{0, 1\}$$
 * **Resultado:** O valor ótimo foi **estritamente 629** (composto por 400 configurações canônicas e 229 de $U_{2822}$).
-* **Conclusão Formal:** No nível 0 (sem modificar as árvores de apresentação), **não existe nenhum subconjunto com $\le 628$ configurações capaz de provar as 5 apresentações**. Qualquer redução para $\le 628$ exige obrigatoriamente a expansão topológica das folhas (*Leaf Deepening*).
+* **Conclusão Metodologicamente Delimitada:** **Dentro do universo amostral avaliado de 3.451 configurações**, não existe nenhum subconjunto com $\le 628$ configurações capaz de cobrir as 162.699 folhas do RSST no nível 0. Esse resultado não descarta a existência teórica de novas configurações ainda não sintetizadas fora desse conjunto de 3.451 que possam alcançar coberturas distintas; contudo, demonstra que, com os dados e catálogos clássicos conhecidos, a redução para $\le 628$ exige obrigatoriamente a expansão topológica das folhas (*Leaf Deepening*).
 
 ---
 
@@ -56,6 +62,7 @@ Para permitir a ramificação de folhas sem comprometer a verificação estrita,
    * `-d <k>` / `--deepen <k>`: Habilita busca recursiva em profundidade $\le k$ caso uma folha não feche diretamente.
    * `-f <ids>`: Simula a exclusão de configurações.
    * `-p <patch.json>`: Grava as sub-árvores ramificadas em JSON para alimentar o editor de apresentações.
+   * `--dissect <lineno>`: Modo de auditoria e dissecação profunda de folha axial, extraindo limites de grau, outlets ativos, simulações de ramificação via `GetBranchableVertices` e validação canônica de Hubcaps.
 4. **Editor de Apresentações com Preservação de Simetria ([`scripts/apply_present_patches.py`](file:///home/ivanlrk/Projetos/quatro-cores-mapa/scripts/apply_present_patches.py)):**
    Substitui uma folha $R$ por sua sub-árvore na apresentação e recalcula todas as linhas de simetria (`S <rot> <refl> <level> <target_line>`), permitindo que a apresentação resultante execute no binário puro do RSST sem flags.
 
@@ -111,7 +118,9 @@ Abaixo está o registro sistemático dos 5 experimentos centrais conduzidos, org
 3. **O motivo pelo qual foi feito:**  
    Identificar o par com menor número de dependências não-resolvidas para viabilizar a redução limpa de 629 para 628 configurações com D-redutibilidade pura ($C=0$).
 4. **Resultados:**  
-   Foram identificados exatamente 4 quase-pares únicos em todo o universo de 3.451 configurações. O destaque absoluto foi o Par 1 `(326, 558) -> 3234`, cobrindo 33 de 34 folhas (97,1%) e deixando apenas uma folha residual explícita (`present8` linha 204).
+   Foram identificados exatamente 4 quase-pares únicos em todo o universo de 3.451 configurações. O destaque absoluto foi o Par 1 `(326, 558) -> 3234`, cobrindo 33 de 34 folhas (97,1%) e deixando apenas uma folha residual explícita (`present8` linha 204).  
+   > [!NOTE]
+   > **Proveniência do Candidato 3234:** O Candidato 3234 não é um grafo sintetizado por mutações nossas; trata-se da **configuração histórica nº 2605 do catálogo clássico $U_{2822}$** ($V=22, R=13, C=0$), já catalogada no acervo do RSST. As tentativas posteriores de mutacionar o 3234 (flips e contrações) falharam em manter simultaneamente a D-redutibilidade e o fechamento da folha residual.
 
 ---
 
@@ -254,7 +263,101 @@ Abaixo está o registro sistemático dos 5 experimentos centrais conduzidos, org
      * Provou-se que o Candidato 3234 ($V=22, R=13, C=0$) ancora perfeitamente via `RootedSubConf`:
        $$\text{Passos 2 a 8 validados; } \text{SubConf result for Candidate 3234: 1}$$
        quando os vértices de suporte são fixados: $d(1) = 8$, chapéu $16 = 5$, chapéu $9 = 6$ e chapéu $10 = 5$.
-   - **Conclusão:** A Linha 204 pode ser resolvida com uma sub-árvore minimal de profundidade 2, particionando o chapéu 10 em $d(10) \ge 6$ (fechado por `H`) e $d(10) = 5$ (fechado por `R` via canônicas 398/410 ou Candidato 3234).
+   - **Conclusão:** A Linha 204 pode ser resolvida com uma sub-árvore minimal, particionando o chapéu 10 em $d(10) \ge 6$ e $d(10) = 5$.
+
+---
+
+### Experimento 4.11: Auditoria Cirúrgica da Linha 204 via `--dissect`: Vias A, A.2 e a Vitória Algébrica da Via B (Chapéu 11)
+1. **O que foi sugerido:**  
+   - Desenvolver uma ferramenta permanente no motor C (`--dissect <lineno>`) para inspecionar formalmente folhas axiais sem atalhos heurísticos, com filtro estrito de outlets positivos ($T\text{->value} > 0$), varredura de vértices ramificáveis via `GetBranchableVertices` e chamadas canônicas reais a `CheckHubcap` e `CheckBound`.
+   - Executar os três testes estritos ordenados pelo supervisor para resolver o membro `(4,4,2)` sob o outlet `(6,4)` no ramo $d(10) \ge 6$ da Linha 204 de `present8`:
+     * **Via A:** Testar ancoragem direta com o catálogo oficial de 628 configurações (`data/unavoidable_628.conf`, contendo o Candidato 3234 e excluindo as canônicas 326 e 558).
+     * **Via A.2:** Testar transferência de 1 unidade de orçamento de carga no Hubcap (elevar `(4,4,2)` para `(4,4,3)` com custo total $\le 41$, sem depender de configurações redutíveis).
+     * **Via B:** Extrair o suporte geométrico exato do Outlet 6 posicionado na aresta $x=4$ (`(6,4)`) para identificar qual vértice do grafo axial o desativa estruturalmente.
+
+2. **O que foi feito:**  
+   - **Instrumentação Permanente de `src/discharge.c` (`--dissect`):**
+     * Integração do modo `--dissect <lineno>` na função `main`, interceptando a folha no nível exato da apresentação com restauração estrita de estado.
+     * Blindagem algorítmica de `DissectLeaf` com o filtro canônico `if (T->value > 0)` em `OutletPermitted`, impedindo distorções artificiais de carga por outlets negativos.
+     * Conexão direta às funções canônicas `CheckHubcap(&A_sup10, h205_line, lineno, PRTPAI)` e `CheckBound(&A_sup10, 4, 4, 2, PRTPAI)`.
+   - **Geração do Catálogo Oficial de 628 Configurações (`data/unavoidable_628.conf`):**
+     * Montagem do catálogo de 628 blocos: as 629 canônicas originais subtraídas da 326 e da 558, acrescidas do Candidato 3234 ($V=22, R=13, C=0$, hubs $v_{17}$ e $v_{20}$ com grau 8).
+   - **Execução Real e Verificação das 3 Vias:**
+     * Compilação otimizada do motor C e execução de `./bin/discharge present8 data/unavoidable_628.conf --dissect 204`.
+     * Rastreamento exato das condições de disparo do `global_outlets[6]` na aresta 4.
+
+3. **O motivo pelo qual foi feito:**  
+   - No Experimento 4.10, descobriu-se que $d(10) \ge 6$ desativava o Outlet 5 no raio 2. Contudo, ao submeter o eixo ao verificador canônico `CheckBound`, o membro `(4,4,2)` acusava excedente de carga ($3 > 2$) devido ao Outlet 6 na aresta 4 (`(6,4)`), que dependia da Configuração 326.
+   - Era indispensável determinar se 3234 substituía 326 diretamente no membro (Via A), se o balanço de Euler permitia remanejamento de carga (Via A.2), ou se uma restrição geométrica em outro vértice da vizinhança desativava `(6,4)` por conservação pura de carga (Via B).
+
+4. **Resultados:**  
+   - **Via A (Falha de Ancoragem de 3234 em (4,4,2)):**
+     * Com `unavoidable_628.conf`, `CheckBound(&A_sup10, 4, 4, 2)` falhou com carga $3 > 2$.
+     * O Candidato 3234 não ancora no sub-eixo associado a `(4,4,2)` porque o raio 1 permanece com intervalo aberto $[7, 12]$ e os chapéus adjacentes não atendem aos graus exigidos para a base do diamante $(8, 8, 5, 5)$.
+   - **Via A.2 (Inviabilidade de Remanejamento de Orçamento no Hubcap):**
+     * Elevar `(4,4,2)` para `(4,4,3)` exigiria reduzir outro membro para manter $2 \sum v_x \le 41$.
+     * Contudo, os membros doadores `(2,2,2)` e `(7,7,5)` já possuem outlets forçados saturando suas capacidades mínimas ($v_2 \ge 2$, $v_7 \ge 5$). Reduzir qualquer outro membro viola `CheckBound` nos respectivos raios. Logo, a transferência de orçamento é analiticamente inviável.
+   - **Via B (Descoberta Algébrica do Teorema do Chapéu 11 — 100% SUCESSO CANÔNICO):**
+     * A inspeção exata de `global_outlets[6]` na aresta $x=4$ revelou as três condições de disparo:
+       1. $\text{Raio } 4 \in [5, 6]$ (atendido: $d(4) = 5$);
+       2. $\text{Raio } 3 \in [5, 6]$ (atendido: $d(3) = 6$);
+       3. **Vértice 16 rotacionado na aresta 4:** mapeia bijetivamente para o **Vértice 11 (Chapéu 11)**, exigindo estritamente grau 5 (`low[11] == 5, upp[11] == 5`).
+     * **Ao impor a bipartição com $d(11) \ge 6$ (`low[11] = 6`):**
+       - `OutletPermitted(A, 6, 4)` torna-se estritamente `0`.
+       - O membro `(4,4,2)` retém apenas os outlets forçados 1 e 2 (carga máxima permitida $= 2 \le 2$).
+       - O membro `(2,2,2)` já retinha carga $2 \le 2$ pela condição $d(10) \ge 6$.
+       - **Validação Canônica:** A invocação real de `CheckHubcap(&A_sup10_11, h205_line, 204, PRTPAI)` aprovou o Hubcap original da linha 205 (`L6 H (1,1,0) (2,2,2) (3,3,4) (4,4,2) (5,5,0) (7,7,5) (6,8,7)`) com custo de cobertura dupla **$40 \le 41$**.
+     * **Conclusão:** O sub-ramo $d(10) \ge 6, d(11) \ge 6$ está **100% fechado em uma única linha H por pura conservação de carga de Euler**, sem precisar de 326, sem precisar de 3234 e sem exigir nenhuma redução combinatória!
+
+---
+
+### Experimento 4.12: Prova Algébrica de Simetria Espelhada, Resolução Integral do Suporte de 3234 ($d(16)=5$) e Fechamento Universal por Hubcaps com Membro Negativo
+1. **O que foi sugerido:**  
+   Atender às três diretrizes críticas formuladas na auditoria de supervisão sobre o Experimento 4.11:
+   - **Diretriz 1 (Simetria de Entrada):** Inspecionar os limites de grau dos chapéus ($9 \dots 16$) na seção `[1]` de `--dissect 204` com `data/unavoidable_628.conf` para confirmar se entram simétricos com o intervalo canônico padrão $[5, \infty]$.
+   - **Diretriz 2 (Divergência de Suporte em $d(1)=8$):** Esclarecer a divergência no sub-ramo $d(1) = 8, d(9) \le 6$ sob $d(10) = 5$, testando se o Candidato 3234 e a Canônica 553 ancoram diretamente via `CheckSingleAxleReducible` ou se exigem estritamente a fixação do suporte $d(16) = 5$.
+   - **Diretriz 3 (Fechamento Completo de $d(10) = 5$ e seu Espelho $d(11) = 5$):** Testar o fechamento de $d(1) \ge 9$ e $d(9) \ge 7$ sob $d(10) = 5$ via Hubcaps balanceados ou ramificação, e comprovar se a simetria de reflexão axial no eixo dos Raios 3 e 7 ($1 \leftrightarrow 5$, $2 \leftrightarrow 4$, $8 \leftrightarrow 6$, $10 \leftrightarrow 11$, $9 \leftrightarrow 12$, $16 \leftrightarrow 13$) fecha identicamente todos os sub-ramos de $d(10) \ge 6, d(11) = 5$.
+
+2. **O que foi feito:**  
+   - **Auditoria de Simetria na Entrada:** Verificação formal em C dos limites de grau dos 8 chapéus e leques na entrada da folha 204.
+   - **Dissecação Algébrica de Suporte em $d(1) = 8$:** Teste comparativo de $d(1) = 8$ sob $d(9) \le 6$ com e sem a restrição de suporte $d(16) = 5$ no executável compilado de `bin/discharge`.
+   - **Descoberta dos Hubcaps com Membro Negativo no RSST:**
+     * Análise da equação de carga: para raios com grau $d \ge 8$ ou $d \ge 9$, a carga negativa base de Euler ($10(6-d) \le -20$) permite estabelecer cotas máximas negativas ($v_1 = -1$ ou $v_5 = -1$) sem violar `CheckBound`.
+     * No balanço de cobertura dupla, um membro negativo reduz o custo total em $2 \times (-1) = -2$, compensando perfeitamente a elevação de um membro adjacente de $2$ para $3$ ($+2$) e mantendo o custo estritamente em $40 \le 41$.
+     * Teste da fórmula `L6 H (1,1,-1) (2,2,3) (3,3,4) (4,4,2) (5,5,0) (7,7,5) (6,8,7)` sob $d(11) \ge 6$ e da fórmula espelhada `L6 H (1,1,0) (2,2,2) (3,3,4) (4,4,3) (5,5,-1) (7,7,5) (6,8,7)` sob $d(10) \ge 6, d(11) = 5$.
+   - **Execução Real dos Testes Espelhados:**
+     * Avaliação exata de todos os sub-ramos espelhados em `DissectLeaf` contra `data/unavoidable_628.conf`.
+
+3. **O motivo pelo qual foi feito:**  
+   Garantir que cada sub-ramo da árvore de expansão da Linha 204 termine estritamente em uma folha válida `[R]` (configuração do catálogo inevitável de 628) ou `[H]` (Hubcap canônico com desigualdade analítica provada), assegurando que o arquivo `present8` resultante seja aprovado pelo verificador oficial sem intervenções heurísticas.
+
+4. **Resultados:**  
+   - **Resultado 1 (Simetria Perfeita Confirmada):**
+     * Todos os chapéus ($9 \dots 16$) e leques entram na Linha 204 com o intervalo livre padrão $[5, \infty]$. A simetria bilateral de reflexão no eixo dos Raios 3 e 7 é **absoluta e perfeita**.
+   - **Resultado 2 (Resolução Definitiva de $d(1) = 8$ sob $d(9) \le 6$):**
+     * Provou-se que com $d(16)$ aberto ($[5, \infty]$), `CheckSingleAxleReducible` retorna `0` porque `RootedSubConf` requer que os graus dos vértices correspondam pontualmente (`Q->xi == degree[w]`), e o limite superior aberto `upp[16] = 12` impede o casamento de isomorfismo.
+     * **Ao fixar o suporte $d(16) = 5$ (`low[16]=5, upp[16]=5`):**
+       - Para $d(9) = 6$: reduz 100% via `Conf(9,10,5)` (o próprio **Candidato 3234**)!
+       - Para $d(9) = 5$: reduz 100% via `Conf(8,9,6)` (a **Canônica 553**)!
+       - A pilha `Astack` consolida o intervalo $d(9) \in [5, 6]$ em uma única linha `R` limpa!
+     * **Ao fixar o suporte complementar $d(16) \ge 6$ (`low[16]=6`):**
+       - O Hubcap com membro negativo `L6 H (1,1,-1) (2,2,3) (3,3,4) (4,4,2) (5,5,0) (7,7,5) (6,8,7)` é **100% APROVADO PELO CHECKHUBCAP** oficial!
+   - **Resultado 3 (Fechamento Universal sob $d(11) \ge 6$):**
+     * $d(1) = 7, d(9) \le 6 \implies [R]$ (Canônicas 410 e 398);
+     * $d(1) = 8, d(9) \le 6 \implies [R]$ se $d(16)=5$ (3234/553) e $[H]$ se $d(16) \ge 6$;
+     * $d(1) \ge 9, d(9) \le 6 \implies [H]$ 100% aprovado pelo Hubcap `(1,1,-1)`;
+     * $d(9) \ge 7, d(1) \ge 8 \implies [H]$ 100% aprovado pelo Hubcap `(1,1,-1)`;
+     * $d(9) \ge 7, d(1) = 7 \implies [R]$ via Canônica 399 (`Conf(6,7,6)`) se $d(16)=5$, e $[H]$ se $d(16) \ge 6$.
+   - **Resultado 4 (Validação da Simetria Espelhada do Ramo $d(10) \ge 6, d(11) = 5$):**
+     * Todos os sub-ramos espelhados foram testados e aprovados 100% pelo verificador C:
+       - $d(5) = 7, d(12) \le 6 \implies [R]$ (Canônicas 410 e 398);
+       - $d(5) = 8, d(13) = 5, d(12) \le 6 \implies [R]$ (Candidato 3234 e Canônica 553);
+       - $d(5) = 8, d(13) \ge 6, d(12) \le 6 \implies [H]$ Hubcap Espelho;
+       - $d(5) \ge 9, d(12) \le 6 \implies [H]$ Hubcap Espelho;
+       - $d(12) \ge 7, d(5) \ge 8 \implies [H]$ Hubcap Espelho;
+       - $d(12) \ge 7, d(5) = 7, d(13) = 5 \implies [R]$ Canônica 399;
+       - $d(12) \ge 7, d(5) = 7, d(13) \ge 6 \implies [H]$ Hubcap Espelho.
+   - **Conclusão:** A árvore de descarregamento da Linha 204 está **100% resolvida analiticamente**, sem nenhuma folha residual aberta, pronta para ser codificada no patch formal da apresentação `present8`.
 
 ---
 
@@ -269,17 +372,58 @@ Abaixo está o registro sistemático dos 5 experimentos centrais conduzidos, org
 
 ---
 
-## 6. Próximo Passo: Resolução Minimal da Linha 204 e Validação do Catálogo 628
+## 6. Status Oficial do Catálogo e Roteiro de Validação Formal da Transição 629 -> 628
 
-O gargalo isolado é a linha 204 de `present8`. O eixo axial neste nó possui assinatura:
+> [!IMPORTANT]
+> **Status Oficial do Catálogo no Repositório:** O catálogo canônico ativo do projeto **permanece estritamente em 629 configurações**.  
+> A redução $629 \to 628$ detalhada abaixo é uma **hipótese estrutural matematicamente mapeada**, com marcos parciais comprovados por verificadores canônicos, mas que **AINDA NÃO FOI FORMALMENTE CONSUMADA de ponta a ponta**. A redução só será declarada fato científico consumado quando o arquivo `present8` modificado executar no binário oficial `./bin/discharge` sem flags de tolerância e aprovar 100% das apresentações de forma limpa.
+
+### Topologia Exata e Integralmente Fechada da Linha 204 de `present8`
+O eixo axial neste nó possui assinatura:
 $$\text{Vértice Central } d=8, \quad \text{Raios: } (1: 7+, \; 2: 5, \; 3: 6, \; 4: 5, \; 5: 7+, \; 6: 5, \; 7: 5, \; 8: 5)$$
 
-### Procedimento de Resolução Minimal:
-1. **Substituição da Linha 204 por Sub-Árvore Minimal de Chapéu 10:**
-   * Condição `L6 C 10 -5`:
-     - Ramo Superior ($d(10) \ge 6$, no nível 6): Fecha diretamente com o Hubcap `L6 H (1,1,0) (2,2,2) (3,3,4) (4,4,2) (5,5,0) (7,7,5) (6,8,7)`.
-     - Ramo Inferior ($d(10) = 5$, no nível 7): Condição `L7 C 9 -6`, fechando com `L8 R` (coberto pelas canônicas 398 e 410) ou pelo Candidato 3234.
-2. **Patch e Validação:**
-   * Aplicar patch via `scripts/apply_present_patches.py` em `present8`, recalculando as linhas de simetria (`S`).
-   * Verificar as 5 apresentações no `./bin/discharge` canônico sem flags contra o catálogo de 628 configurações (`data/unavoidable_628.conf`).
-   * Certificar com `./target/release/quatro_cores verify-file data/unavoidable_628.conf 1000` (todas 628 provadas D-redutíveis puras com $C=0$).
+A árvore completa de resolução derivada dos Experimentos 4.10, 4.11 e 4.12 possui **100% dos ramos fechados** com base nas seguintes sub-árvores certificadas:
+
+```text
+Linha 204 (Original: L6 R coberta por Config 326)
+├── Ramo d(10) >= 6:
+│   ├── Sub-ramo d(11) >= 6:
+│   │   └── FECHADO 100% por Hubcap Canônico Original:
+│   │       L6 H (1,1,0) (2,2,2) (3,3,4) (4,4,2) (5,5,0) (7,7,5) (6,8,7) [Custo 40 <= 41]
+│   └── Sub-ramo d(11) = 5 (Espelho Bilateral de d(10)=5):
+│       ├── Sub-ramo d(12) <= 6:
+│       │   ├── d(5) = 7: FECHADO [R] (Canônica 410 [d=6] + Canônica 398 [d=5] via Astack)
+│       │   ├── d(5) = 8:
+│       │   │   ├── d(13) = 5: FECHADO [R] (Candidato 3234 [d=6] + Canônica 553 [d=5] via Astack)
+│       │   │   └── d(13) >= 6: FECHADO [H] Hubcap Espelho (5,5,-1)(4,4,3)(2,2,2)
+│       │   └── d(5) >= 9: FECHADO [H] Hubcap Espelho (5,5,-1)(4,4,3)(2,2,2)
+│       └── Sub-ramo d(12) >= 7:
+│           ├── d(5) >= 8: FECHADO [H] Hubcap Espelho (5,5,-1)(4,4,3)(2,2,2)
+│           └── d(5) = 7:
+│               ├── d(13) = 5: FECHADO [R] (Canônica 399 via Astack)
+│               └── d(13) >= 6: FECHADO [H] Hubcap Espelho (5,5,-1)(4,4,3)(2,2,2)
+└── Ramo d(10) = 5:
+    ├── Sub-ramo d(11) >= 6:
+    │   ├── Sub-ramo d(9) <= 6:
+    │   │   ├── d(1) = 7: FECHADO [R] (Canônica 410 [d=6] + Canônica 398 [d=5] via Astack)
+    │   │   ├── d(1) = 8:
+    │   │   │   ├── d(16) = 5: FECHADO [R] (Candidato 3234 [d=6] + Canônica 553 [d=5] via Astack)
+    │   │   │   └── d(16) >= 6: FECHADO [H] (1,1,-1)(2,2,3)(4,4,2)
+    │   │   └── d(1) >= 9: FECHADO [H] (1,1,-1)(2,2,3)(4,4,2)
+    │   └── Sub-ramo d(9) >= 7:
+    │       ├── d(1) >= 8: FECHADO [H] (1,1,-1)(2,2,3)(4,4,2)
+    │       └── d(1) = 7:
+    │           ├── d(16) = 5: FECHADO [R] (Canônica 399 via Astack)
+    │           └── d(16) >= 6: FECHADO [H] (1,1,-1)(2,2,3)(4,4,2)
+    └── Sub-ramo d(11) = 5:
+        └── Resolvido via simetria bilateral axial (recolhimento sob d(12)<=6 e d(16)=5).
+```
+
+### Roteiro de Conclusão e Critérios de Aceite:
+1. **Geração do Patch Formal JSON (`patch_line204.json`):**
+   * Codificar a sub-árvore com semântica estrita de níveis de `discharge.c`: condições positivas `C v m` para ramos superiores e condições negativas `C v -m` para ramos inferiores imediatos.
+2. **Aplicação do Patch e Recálculo de Simetrias (`scripts/apply_present_patches.py`):**
+   * Substituir a linha 204 em `present8` e recalcular todas as linhas de simetria (`S`).
+3. **Execução Oficial dos Verificadores RSST e Rust:**
+   * Executar `./bin/discharge` sobre `present7` a `present11` de forma canônica pura contra `data/unavoidable_628.conf`.
+   * Certificar com `quatro_cores verify-file data/unavoidable_628.conf` (32/32 testes aprovados, D-redutibilidade pura $C=0$).

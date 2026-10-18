@@ -19,6 +19,7 @@ discharge_augmented
 outlet.et
 rsst_coverage.txt
 test_*.conf
+/scratch/
 
 # Python artifacts
 __pycache__/
