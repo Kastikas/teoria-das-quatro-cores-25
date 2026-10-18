@@ -1,5 +1,4 @@
 use crate::graph::Configuration;
-use std::collections::HashSet;
 
 pub struct FlippedConfig {
     pub conf: Configuration,
@@ -13,11 +12,12 @@ pub fn generate_raw_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
     let ring = conf.ring();
     let mut results = Vec::new();
 
-    let mut existing_edges = HashSet::new();
+    let mut existing_edges = [[false; crate::graph::VERTS]; crate::graph::VERTS];
     for u in 1..=verts {
         for h in 1..=conf.mat[u][0] {
             let v = conf.mat[u][h];
-            existing_edges.insert((u.min(v), u.max(v)));
+            existing_edges[u][v] = true;
+            existing_edges[v][u] = true;
         }
     }
 
@@ -65,7 +65,7 @@ pub fn generate_raw_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
             }
 
             // Cannot flip if (w, z) is already an edge
-            if existing_edges.contains(&(w.min(z), w.max(z))) {
+            if existing_edges[w][z] {
                 continue;
             }
 
@@ -74,11 +74,23 @@ pub fn generate_raw_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
                 continue;
             }
 
-            // Ensure degrees of internal vertices don't drop below 5
+            // Ensure degrees of internal vertices don't drop below 5, and ring vertices don't drop below 3
             if u > ring && deg_u <= 5 {
                 continue;
             }
             if v > ring && deg_v <= 5 {
+                continue;
+            }
+            if u <= ring && deg_u <= 3 {
+                continue;
+            }
+            if v <= ring && deg_v <= 3 {
+                continue;
+            }
+            if conf.mat[w][0] + 1 >= crate::graph::DEG - 1 {
+                continue;
+            }
+            if conf.mat[z][0] + 1 >= crate::graph::DEG - 1 {
                 continue;
             }
 
@@ -119,6 +131,13 @@ pub fn generate_raw_internal_flips(conf: &Configuration) -> Vec<FlippedConfig> {
                 _ => continue,
             };
             if !(pv_z == pu_z + 1 || (pu_z == 0 && pv_z == deg_z - 1)) {
+                continue;
+            }
+
+            if w <= ring && pu_w == 0 && pv_w == deg_w - 1 {
+                continue;
+            }
+            if z <= ring && pu_z == 0 && pv_z == deg_z - 1 {
                 continue;
             }
 
@@ -316,6 +335,22 @@ mod tests {
         assert!(
             flips.is_empty(),
             "Expected no flips since degree drops below 5"
+        );
+    }
+
+    #[test]
+    fn test_generate_internal_flips_ring_degree_guard() {
+        let mut conf = setup_valid_flip_config();
+        // Flipped edge is (u=4, v=5) where u=4 is on the ring.
+        // Set ring vertex 4's degree to 3.
+        conf.mat[4][0] = 3;
+        let flips = generate_raw_internal_flips(&conf);
+        let contains_4_5_flip = flips
+            .iter()
+            .any(|f| f.flipped_edge == (4, 5) || f.flipped_edge == (5, 4));
+        assert!(
+            !contains_4_5_flip,
+            "Expected flip (4, 5) to be rejected since ring vertex degree would drop below 3"
         );
     }
 

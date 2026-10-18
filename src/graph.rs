@@ -78,17 +78,17 @@ impl Configuration {
         }
 
         // Condition (2): Degree bounds
-        // Ring vertices: 3 <= deg < n, deg < DEG
+        // Ring vertices: 3 <= deg < n, deg < 13
         for i in 1..=r {
             let d = self.mat[i][0];
-            if d < 3 || d >= n || d >= DEG {
+            if d < 3 || d >= n || d >= 13 {
                 return Err("Condition 2 violated: ring vertex degree out of bounds");
             }
         }
-        // Internal vertices: 5 <= deg < n, deg < DEG
+        // Internal vertices: 5 <= deg < n, deg < 13
         for i in (r + 1)..=n {
             let d = self.mat[i][0];
-            if d < 5 || d >= n || d >= DEG {
+            if d < 5 || d >= n || d >= 13 {
                 return Err("Condition 2 violated: internal vertex degree < 5 or >= n");
             }
         }
@@ -278,29 +278,27 @@ pub fn canonical_dihedral_signature(conf: &Configuration) -> (usize, usize, Vec<
                 let u = queue[q_head];
                 q_head += 1;
                 let deg = conf.mat[u][0];
-
-                if !reflection {
-                    for i in 1..=deg {
-                        let v = conf.mat[u][i];
-                        if v > ring && v <= verts && pi[v] == 0 {
-                            pi[v] = next_label;
-                            next_label += 1;
-                            if q_tail < VERTS {
-                                queue[q_tail] = v;
-                                q_tail += 1;
-                            }
-                        }
-                    }
+                let start_idx = if u <= ring {
+                    if !reflection { 1 } else { deg }
                 } else {
-                    for i in (1..=deg).rev() {
-                        let v = conf.mat[u][i];
-                        if v > ring && v <= verts && pi[v] == 0 {
-                            pi[v] = next_label;
-                            next_label += 1;
-                            if q_tail < VERTS {
-                                queue[q_tail] = v;
-                                q_tail += 1;
-                            }
+                    (1..=deg)
+                        .filter(|&i| pi[conf.mat[u][i]] > 0)
+                        .min_by_key(|&i| pi[conf.mat[u][i]])
+                        .unwrap_or(1)
+                };
+                for step in 0..deg {
+                    let i = if !reflection {
+                        ((start_idx - 1 + step) % deg) + 1
+                    } else {
+                        ((start_idx + deg - 1 - (step % deg)) % deg) + 1
+                    };
+                    let v = conf.mat[u][i];
+                    if v > ring && v <= verts && pi[v] == 0 {
+                        pi[v] = next_label;
+                        next_label += 1;
+                        if q_tail < VERTS {
+                            queue[q_tail] = v;
+                            q_tail += 1;
                         }
                     }
                 }
@@ -955,6 +953,24 @@ mod tests {
     }
 
     #[test]
+    fn test_canonical_dihedral_signature_internal_cyclic_invariance() {
+        let conf1 = make_test_diamond();
+        let mut conf2 = make_test_diamond();
+
+        // Rotate the cyclic adjacency list of internal vertex 7 by 2 positions:
+        // Original in make_test_diamond: &[2, 8, 9, 10, 1]
+        // Cyclic shift: &[9, 10, 1, 2, 8]
+        conf2.set_vertex(7, &[9, 10, 1, 2, 8]);
+
+        let sig1 = canonical_dihedral_signature(&conf1);
+        let sig2 = canonical_dihedral_signature(&conf2);
+        assert_eq!(
+            sig1, sig2,
+            "Rotating cyclic adjacency list of internal vertex must preserve canonical dihedral signature!"
+        );
+    }
+
+    #[test]
     fn test_canonical_dihedral_signature_distinct() {
         let conf1 = make_test_diamond();
         let mut conf2 = make_test_diamond();
@@ -979,6 +995,12 @@ mod tests {
         let res = conf.check_rsst_admissibility();
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("Condition 2 violated"));
+
+        // Ring vertex degree >= 13 should be rejected (C discharge.c DEG=13 limit)
+        conf.mat[3][0] = 13;
+        let res2 = conf.check_rsst_admissibility();
+        assert!(res2.is_err());
+        assert!(res2.unwrap_err().contains("Condition 2 violated"));
     }
 
     #[test]
@@ -989,6 +1011,12 @@ mod tests {
         let res = conf.check_rsst_admissibility();
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("Condition 2 violated"));
+
+        // Internal vertex degree >= 13 should be rejected (C discharge.c DEG=13 limit)
+        conf.mat[7][0] = 13;
+        let res2 = conf.check_rsst_admissibility();
+        assert!(res2.is_err());
+        assert!(res2.unwrap_err().contains("Condition 2 violated"));
     }
 
     #[test]

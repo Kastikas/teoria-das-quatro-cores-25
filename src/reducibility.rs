@@ -1,4 +1,9 @@
 use crate::graph::{Angles, Configuration, EDGES, MAXRING};
+use std::cell::RefCell;
+
+thread_local! {
+    static REDUCIBILITY_WORKSPACE: RefCell<(Vec<u8>, Vec<u8>)> = RefCell::new((Vec::new(), Vec::new()));
+}
 
 pub const SIMATCHNUMBER: [usize; 17] = [
     0, 0, 1, 3, 10, 30, 95, 301, 980, 3228, 10797, 36487, 124542, 428506, 1485003, 5178161,
@@ -85,66 +90,80 @@ impl ReducibilityEngine {
         assert!(ring <= MAXRING, "Ring size exceeds MAXRING");
 
         let ncodes = ((self.power[ring] + 1) / 2) as usize;
-        let mut live = vec![1u8; ncodes];
-
-        // 1. Find live: colorings that do NOT extend to the configuration
-        let nlive_init = self.find_live(&mut live, ncodes, angles, conf.extent_claim());
-        let extending_count = ncodes - nlive_init;
-
         let nchar = SIMATCHNUMBER[ring] / 8 + 2;
-        let mut real = vec![255u8; nchar + 2];
 
-        let mut steps = Vec::new();
-        let mut nlive = nlive_init;
-        let mut round = 0;
-
-        loop {
-            round += 1;
-            let nreal = self.test_match(ring, &mut real, &mut live, nchar);
-            let prev_nlive = nlive;
-            let (new_nlive, changed) = self.update_live(&mut live, ncodes, prev_nlive);
-            nlive = new_nlive;
-
-            steps.push(ReductionStep {
-                round,
-                remaining_colorings: nlive,
-                remaining_signed_matchings: nreal,
-            });
-
-            if !changed || nlive == 0 {
-                break;
+        REDUCIBILITY_WORKSPACE.with(|ws| {
+            let mut ws = ws.borrow_mut();
+            let (ref mut live_buf, ref mut real_buf) = *ws;
+            if live_buf.len() < ncodes {
+                live_buf.resize(ncodes, 1);
             }
-        }
+            live_buf[..ncodes].fill(1);
 
-        let is_d_reducible = nlive == 0;
-        let mut is_c_reducible = false;
+            if real_buf.len() < nchar + 2 {
+                real_buf.resize(nchar + 2, 255);
+            }
+            real_buf[..nchar + 2].fill(255);
 
-        if !is_d_reducible
-            && angles.contract[0] > 0
-            && crate::graph::validate_sparse_contract(conf, angles).is_ok()
-            && self.check_contract(angles, &live, nlive)
-        {
-            is_c_reducible = true;
-        }
+            let live = &mut live_buf[..ncodes];
+            let real = &mut real_buf[..nchar + 2];
 
-        let reduction_type = if is_d_reducible {
-            ReductionType::DReducible
-        } else if is_c_reducible {
-            ReductionType::CReducible
-        } else {
-            ReductionType::NotReducible
-        };
+            // 1. Find live: colorings that do NOT extend to the configuration
+            let nlive_init = self.find_live(live, ncodes, angles, conf.extent_claim());
+            let extending_count = ncodes - nlive_init;
 
-        ReducibilityReport {
-            total_colorings: ncodes,
-            extending_colorings: extending_count,
-            initial_failed_colorings: nlive_init,
-            total_signed_matchings: SIMATCHNUMBER[ring],
-            steps,
-            is_d_reducible,
-            is_c_reducible,
-            reduction_type,
-        }
+            let mut steps = Vec::new();
+            let mut nlive = nlive_init;
+            let mut round = 0;
+
+            loop {
+                round += 1;
+                let nreal = self.test_match(ring, real, live, nchar);
+                let prev_nlive = nlive;
+                let (new_nlive, changed) = self.update_live(live, ncodes, prev_nlive);
+                nlive = new_nlive;
+
+                steps.push(ReductionStep {
+                    round,
+                    remaining_colorings: nlive,
+                    remaining_signed_matchings: nreal,
+                });
+
+                if !changed || nlive == 0 {
+                    break;
+                }
+            }
+
+            let is_d_reducible = nlive == 0;
+            let mut is_c_reducible = false;
+
+            if !is_d_reducible
+                && angles.contract[0] > 0
+                && crate::graph::validate_sparse_contract(conf, angles).is_ok()
+                && self.check_contract(angles, live, nlive)
+            {
+                is_c_reducible = true;
+            }
+
+            let reduction_type = if is_d_reducible {
+                ReductionType::DReducible
+            } else if is_c_reducible {
+                ReductionType::CReducible
+            } else {
+                ReductionType::NotReducible
+            };
+
+            ReducibilityReport {
+                total_colorings: ncodes,
+                extending_colorings: extending_count,
+                initial_failed_colorings: nlive_init,
+                total_signed_matchings: SIMATCHNUMBER[ring],
+                steps,
+                is_d_reducible,
+                is_c_reducible,
+                reduction_type,
+            }
+        })
     }
 
     fn find_live(
@@ -203,6 +222,7 @@ impl ReducibilityEngine {
         }
     }
 
+    #[inline(always)]
     fn record(
         &self,
         col: &[i64],
@@ -484,6 +504,7 @@ impl ReducibilityEngine {
         }
     }
 
+    #[inline(always)]
     fn still_real(
         &self,
         col: i64,
@@ -492,28 +513,24 @@ impl ReducibilityEngine {
         live: &mut [u8],
         on: usize,
     ) -> bool {
+        let first_idx = if col < 0 { (-col) as usize } else { col as usize };
+        if first_idx >= live.len() || live[first_idx] == 0 {
+            return false;
+        }
+
         let mut sum = [0i64; 128];
         let mut twisted = [0usize; 128];
         let mut untwisted = [0usize; 128];
         let mut ntwisted = 0;
         let mut nuntwisted = 0;
 
+        sum[0] = col;
         if col < 0 {
-            let idx = (-col) as usize;
-            if idx >= live.len() || live[idx] == 0 {
-                return false;
-            }
-            twisted[ntwisted] = idx;
-            ntwisted += 1;
-            sum[0] = col;
+            twisted[0] = first_idx;
+            ntwisted = 1;
         } else {
-            let idx = col as usize;
-            if idx >= live.len() || live[idx] == 0 {
-                return false;
-            }
-            untwisted[nuntwisted] = idx;
-            nuntwisted += 1;
-            sum[0] = col;
+            untwisted[0] = first_idx;
+            nuntwisted = 1;
         }
 
         let mut twopower = 1;
