@@ -931,6 +931,7 @@ tp_axle *A;
       x = PO->x;
 
       CopyAxle(AA, A);
+      good = 1;
       for (i = 0; i < PO->T->nolines; ++i) {
          p = PO->T->pos[i];
          p = x - 1 + (p - 1) % deg < deg ? p + x - 1 : p + x - 1 - deg;
@@ -939,18 +940,18 @@ tp_axle *A;
          if (PO->T->upp[i] < AA->upp[p])
             AA->upp[p] = PO->T->upp[i];
          if (AA->low[p] > AA->upp[p]) {
-            free(sprime);
-            free(AA);
-            return (0);
-         }
-      }
-
-      good = 1;
-      for (i = 0; i < pos; i++)
-         if (s[i] == -1 && OutletForced(AA, posout[i].T, posout[i].x)) {
             good = 0;
             break;
          }
+      }
+
+      if (good) {
+         for (i = 0; i < pos; i++)
+            if (s[i] == -1 && OutletForced(AA, posout[i].T, posout[i].x)) {
+               good = 0;
+               break;
+            }
+      }
       if (good) {
          for (i = 0; (sprime[i] = s[i]) < 99; ++i);
          sprime[pos] = 1;
@@ -1813,7 +1814,7 @@ tp_adjmat adjmat;
       adjmat[i][h] = a;
       adjmat[a][i] = h;
       adjmat[h][a] = i;
-      if (A->upp[i] < 12)
+      if (A->low[i] == A->upp[i] && A->upp[i] < 12)
 	 DoFan(deg, i, A->upp[i], adjmat);
    }
 }/* Getadjmat */
@@ -2454,7 +2455,7 @@ tp_vertices degree;
 
    a = degree[u];
    b = degree[v];
-   if ((a >= b) && (b <= 8) && (a <= 11) && ((a <= 8) || (u == 0))) {
+   if ((a >= b) && (b <= 11) && (a <= 11)) {
       e = edgelist[a][b];
       if (e[0] + 2 >= MAXELIST) {
 	 (void) fflush(stdout);
@@ -2464,11 +2465,11 @@ tp_vertices degree;
       e[++e[0]] = u;
       e[++e[0]] = v;
    }
-   if ((b >= a) && (a <= 8) && (b <= 11) && ((b <= 8) || (v == 0))) {
+   if ((b >= a) && (a <= 11) && (b <= 11)) {
       e = edgelist[b][a];
       if (e[0] + 2 >= MAXELIST) {
 	 (void) fflush(stdout);
-	 (void) (stderr, "More than %d entries in edgelist needed\n", MAXELIST);
+	 (void) fprintf(stderr, "More than %d entries in edgelist needed\n", MAXELIST);
 	 exit(41);
       }
       e[++e[0]] = v;
