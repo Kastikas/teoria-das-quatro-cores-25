@@ -30,10 +30,10 @@ from typing import Dict, List, Optional, Set, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 MAPPER_BIN = ROOT_DIR / "target" / "discharge_mapper"
-DISCHARGE_C = ROOT_DIR / "01_modelo_629_rsst_canonico" / "discharge.c"
-DEFAULT_CONF = ROOT_DIR / "01_modelo_629_rsst_canonico" / "unavoidable_629.conf"
-DEFAULT_RULES = ROOT_DIR / "01_modelo_629_rsst_canonico" / "rules"
-DEFAULT_PRES_DIR = ROOT_DIR / "01_modelo_629_rsst_canonico"
+DISCHARGE_C = ROOT_DIR / "src" / "discharge.c"
+DEFAULT_CONF = ROOT_DIR / "data" / "models" / "unavoidable_exact_629.conf"
+DEFAULT_RULES = ROOT_DIR / "data" / "rsst_presentations" / "rules"
+DEFAULT_PRES_DIR = ROOT_DIR / "data" / "rsst_presentations"
 DEFAULT_MAP_JSON = ROOT_DIR / "data" / "rline_usage_map.json"
 
 sys.path.insert(0, str(ROOT_DIR / "scripts"))
@@ -47,6 +47,9 @@ from presentation_editor import (
 
 def ensure_discharge_binary() -> Path:
     """Garante que o executável canônico de discharge está compilado."""
+    bin_path = ROOT_DIR / "bin" / "discharge"
+    if bin_path.exists():
+        return bin_path
     bin_path = ROOT_DIR / "target" / "discharge_1997"
     bin_path.parent.mkdir(parents=True, exist_ok=True)
     if not bin_path.exists() or DISCHARGE_C.stat().st_mtime > bin_path.stat().st_mtime:
@@ -218,11 +221,9 @@ class LeafDeepener:
         axle_info = simulate_axle_at_line(lines, target_lineno)
         lev = axle_info["level"]
 
-        # Vértices em aberto
-        open_verts = []
-        for v in range(1, 5 * axle_info["degree"] + 1):
-            if axle_info["low"][v] < axle_info["upp"][v]:
-                open_verts.append((v, axle_info["low"][v], axle_info["upp"][v]))
+        # Vértices em aberto elegíveis conforme gramática RSST de discharge.c
+        branchable = axle_info.get("branchable_vertices", [])
+        open_verts = [(v, axle_info["low"][v], axle_info["upp"][v]) for v in branchable]
 
         # Montar catálogo de teste sem k1 e k2, com cand_block
         test_catalog_blocks = [
@@ -236,23 +237,19 @@ class LeafDeepener:
             test_conf_path = Path(tf.name)
 
         try:
-            # Tentar quebras nos vértices abertos
             indent = " " * (2 * lev + 2)
             child_indent = " " * (2 * lev + 4)
 
             for v, low_v, upp_v in open_verts:
-                # Tenta fixar v no lower bound (m = low_v)
-                # No RSST: m > 0 => low[n]=m no filho; upp[n]=m-1 no complemento
-                # Se m < 0 => upp[n]=-m no filho; low[n]=1-m no complemento
                 test_conditions = []
-                if low_v == 5 and upp_v > 5:
-                    test_conditions.append(f"-5")  # upp=5 no filho, low=6 no complemento
-                if upp_v >= 6:
-                    test_conditions.append(f"6")   # low=6 no filho, upp=5 no complemento
+                # Condições positivas: m in [max(6, low_v + 1), min(upp_v, 9)]
+                for m in range(max(6, low_v + 1), min(upp_v, 9) + 1):
+                    test_conditions.append(str(m))
+                # Condições negativas: -k for k in [max(5, low_v), min(8, upp_v - 1)]
+                for k in range(max(5, low_v), min(8, upp_v - 1) + 1):
+                    test_conditions.append(str(-k))
 
                 for cond_val in test_conditions:
-                    # Tenta fechamentos do complemento:
-                    # 1. R direto
                     closing_candidates = [
                         f"{indent}L{lev} R\n",
                     ]
@@ -285,6 +282,139 @@ class LeafDeepener:
         finally:
             if os.path.exists(test_conf_path):
                 os.remove(test_conf_path)
+
+        return None
+
+    def solve_mode_b_hubcap_split(
+        self,
+        pres_file: str,
+        target_lineno: int,
+        test_conf_path: Path,
+    ) -> Optional[Tuple[List[str], str]]:
+        """
+        Resolve uma linha 'H' problemática através de bipartição direcionada:
+        L<lev> H <hubcap_spec>
+        ->
+        L<lev> C <v> <m>
+          L<lev+1> <child_closure>
+        L<lev> <comp_closure>
+
+        Onde child_closure e comp_closure podem ser o Hubcap original, folha R
+        ou bipartição recursiva de nível 2.
+        """
+        p_path = self.pres_dir / pres_file
+        with open(p_path, "r") as f:
+            lines = f.readlines()
+
+        axle_info = simulate_axle_at_line(lines, target_lineno)
+        lev = axle_info["level"]
+        orig_line = lines[target_lineno - 1]
+        m_h = re.search(r"H\s+(.+)$", orig_line.strip())
+        h_spec = m_h.group(1).strip() if m_h else ""
+
+        indent = " " * (2 * lev + 2)
+        child_indent = " " * (2 * lev + 4)
+        branchable = axle_info.get("branchable_vertices", [])
+
+        # Extrair cadeia de condições ativas (isolamento sem interferência de outras linhas)
+        active_branch = []
+        first = lines[0].strip()
+        deg = int(first.split()[1])
+        for idx, line in enumerate(lines[:target_lineno - 1], start=1):
+            s = line.strip()
+            if not s or s.startswith("Degree"):
+                continue
+            parts = s.split()
+            l_lev = int(parts[0][1:])
+            itype = parts[1]
+            while len(active_branch) > l_lev:
+                active_branch.pop()
+            if itype == "C":
+                active_branch.append(line)
+
+        def test_candidate_block(candidate_block: List[str]) -> bool:
+            pres_content = [f"Degree {deg}\n"] + active_branch + candidate_block + ["Q.E.D.\n"]
+            with tempfile.NamedTemporaryFile("w", suffix=".present", delete=False) as tf:
+                tf.writelines(pres_content)
+                tpath = tf.name
+            try:
+                proc = subprocess.run(
+                    [str(self.discharge_bin), tpath, str(test_conf_path), str(self.rules_path)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
+                return (proc.returncode == 0 and "verified." in proc.stdout)
+            finally:
+                if os.path.exists(tpath):
+                    os.remove(tpath)
+
+        # Passo 1: Tentar bipartição simples de Nível 1
+        for v in branchable:
+            low_v = axle_info["low"][v]
+            upp_v = axle_info["upp"][v]
+            if low_v >= upp_v:
+                continue
+
+            test_conditions = []
+            for k in range(max(5, low_v), min(8, upp_v - 1) + 1):
+                test_conditions.append(str(-k))
+            for m in range(max(6, low_v + 1), min(upp_v, 9) + 1):
+                test_conditions.append(str(m))
+
+            for cond_val in test_conditions:
+                options = [
+                    (f"H  {h_spec}", f"H  {h_spec}"),
+                    (f"H  {h_spec}", "R"),
+                    ("R", f"H  {h_spec}"),
+                    ("R", "R"),
+                ]
+
+                for child_act, comp_act in options:
+                    new_block = [
+                        f"{indent}L{lev} C  {v} {cond_val}\n",
+                        f"{child_indent}L{lev + 1} {child_act}\n",
+                        f"{indent}L{lev} {comp_act}\n",
+                    ]
+
+                    if test_candidate_block(new_block):
+                        desc = f"L{lev} C {v} {cond_val} (Child={child_act[:1]}, Comp={comp_act[:1]})"
+                        return new_block, desc
+
+        # Passo 2: Tentar bipartição em 2 níveis (quando 1 nível não é suficiente)
+        for v1 in branchable:
+            low_1 = axle_info["low"][v1]
+            upp_1 = axle_info["upp"][v1]
+            if low_1 >= upp_1:
+                continue
+
+            conds1 = [str(-k) for k in range(max(5, low_1), min(8, upp_1 - 1) + 1)] + \
+                     [str(m) for m in range(max(6, low_1 + 1), min(upp_1, 9) + 1)]
+
+            for c1 in conds1:
+                for v2 in branchable:
+                    if v2 == v1:
+                        continue
+                    low_2 = axle_info["low"][v2]
+                    upp_2 = axle_info["upp"][v2]
+                    if low_2 >= upp_2:
+                        continue
+
+                    conds2 = [str(-k) for k in range(max(5, low_2), min(8, upp_2 - 1) + 1)] + \
+                             [str(m) for m in range(max(6, low_2 + 1), min(upp_2, 9) + 1)]
+
+                    for c2 in conds2:
+                        for child2_act in (f"H  {h_spec}", "R"):
+                            for comp2_act in (f"H  {h_spec}", "R"):
+                                new_block = [
+                                    f"{indent}L{lev} C  {v1} {c1}\n",
+                                    f"{child_indent}L{lev + 1} H  {h_spec}\n",
+                                    f"{indent}L{lev} C  {v2} {c2}\n",
+                                    f"{child_indent}L{lev + 1} {child2_act}\n",
+                                    f"{indent}L{lev} {comp2_act}\n",
+                                ]
+
+                                if test_candidate_block(new_block):
+                                    desc = f"Nivel 2: C {v1} {c1} + C {v2} {c2} (ch2={child2_act[:1]}, co2={comp2_act[:1]})"
+                                    return new_block, desc
 
         return None
 
@@ -326,6 +456,9 @@ def main():
     parser.add_argument("--rules", type=Path, default=DEFAULT_RULES, help="Arquivo rules")
     parser.add_argument("--pres-dir", type=Path, default=DEFAULT_PRES_DIR, help="Diretório com apresentações")
     parser.add_argument("--map-json", type=Path, default=DEFAULT_MAP_JSON, help="Relatório de mapeamento JSON")
+    parser.add_argument("--solve-hubcap", action="store_true", help="Executa o resolvedor de bipartição Modo B para linhas H")
+    parser.add_argument("--target-line", type=int, default=None, help="Número de linha alvo para resolver")
+    parser.add_argument("--target-pres", type=str, default="present7", help="Arquivo de apresentação alvo")
     args = parser.parse_args()
 
     deepener = LeafDeepener(
@@ -339,7 +472,30 @@ def main():
     print("      MOTOR DE APROFUNDAMENTO DE FOLHAS (LEAF DEEPENING) — RSST")
     print("=" * 80)
 
-    if args.mode in ("A", "all"):
+    if args.solve_hubcap:
+        if args.target_line:
+            targets = [args.target_line]
+        else:
+            # Padrão: as 9 linhas residuais de present7 para o Par 2
+            targets = [339, 1774, 2295, 2297, 2301, 2308, 2312, 2318, 2328]
+
+        print(f"\n--- [RESOLVEDOR MODO B: BIPARTIÇÃO DE HUBCAPS PARA {args.target_pres}] ---")
+        print(f"Linhas alvo: {targets}")
+        print(f"Catálogo de teste: {args.conf}")
+
+        for lno in targets:
+            print(f"\n[*] Tentando resolver Linha {lno} de {args.target_pres}...")
+            res = deepener.solve_mode_b_hubcap_split(args.target_pres, lno, args.conf)
+            if res:
+                block, desc = res
+                print(f"  [+] SUCESSO na Linha {lno}: {desc}")
+                print("  Bloco gerado:")
+                for bl in block:
+                    print(f"    {bl.rstrip()}")
+            else:
+                print(f"  [-] Não foi possível fechar a Linha {lno} com profundidade <= 2.")
+
+    if args.mode in ("A", "all") and not args.solve_hubcap:
         print("\n--- [MODO A: ABSORÇÃO 2-POR-1 VIA LEAF DEEPENING] ---")
         cand_path = args.candidates or (ROOT_DIR / "03_modelo_243_podas_2a_ordem" / "certified_pruned_candidates.conf")
         if cand_path.exists():
@@ -351,7 +507,7 @@ def main():
         else:
             print(f"[!] Arquivo de candidatas não encontrado: {cand_path}")
 
-    if args.mode in ("B", "all"):
+    if args.mode in ("B", "all") and not args.solve_hubcap:
         print("\n--- [MODO B: ELIMINAÇÃO DE ESPECIALISTAS DE LINHAS H] ---")
         single_h = deepener.map_data.get("single_h_only", [])
         print(f"Total de configurações acionadas exclusivamente em 1 linha H: {len(single_h)}")

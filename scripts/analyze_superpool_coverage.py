@@ -18,13 +18,19 @@ POOL_CONF = ROOT_DIR / "data" / "pool" / "pool_629_plus_33.conf"
 SUPERPOOL_33_CONF = ROOT_DIR / "data" / "pool" / "synthesized_superpool_33.conf"
 CANONICAL_CONF = ROOT_DIR / "01_modelo_629_rsst_canonico" / "unavoidable_629.conf"
 
-LOG_FILES = {
-    7: Path("/tmp/matrix_deg7.log"),
-    8: Path("/tmp/matrix_deg8.log"),
-    9: Path("/tmp/matrix_deg9.log"),
-    10: Path("/tmp/matrix_deg10.log"),
-    11: Path("/tmp/matrix_deg11.log"),
-}
+def get_default_log_files():
+    pool_dir = ROOT_DIR / "data" / "pool"
+    logs = {}
+    for d in [7, 8, 9, 10, 11]:
+        p_cand = pool_dir / f"matrix_deg{d}.log"
+        if not p_cand.exists():
+            p_cand = pool_dir / f"matrix3451_deg{d}.log"
+        if not p_cand.exists():
+            p_cand = Path(f"/tmp/matrix_deg{d}.log")
+        logs[d] = p_cand
+    return logs
+
+LOG_FILES = get_default_log_files()
 
 def parse_conf_metadata(conf_path: Path):
     configs = []

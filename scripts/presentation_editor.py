@@ -132,8 +132,9 @@ def validate_presentation_syntax(lines: List[str]) -> Tuple[bool, str]:
     Verifica que:
     1. A linha 1 possui Degree<d> (d entre 5 e 11).
     2. Cada linha L<lev> respeita o nível da árvore (C incrementa lev, folhas R/H/S decrementam).
-    3. Toda instrução 'S' referencia uma linha 'C' existente que estava no mesmo nível ou ancestral.
-    4. Termina com 'Q.E.D.'.
+    3. lev < 17 (MAXLEV em discharge.c).
+    4. Toda instrução 'S' referencia uma simetria ativa na pilha sym[] (com tamanho < MAXSYM=50).
+    5. Termina com 'Q.E.D.'.
     """
     if not lines:
         return False, "Arquivo vazio"
@@ -148,7 +149,10 @@ def validate_presentation_syntax(lines: List[str]) -> Tuple[bool, str]:
         return False, f"Grau inválido na linha 1: {deg}"
 
     lev = 0
-    c_lines: Dict[int, Dict] = {}  # lineno -> {level, vertex, bound}
+    max_lev = 17
+    max_sym = 50
+    sym_stack: List[Dict] = []  # list of {"number": lineno, "nolines": lev + 1}
+    cond_history: List[Dict] = []  # list of {"n": vertex, "m": bound}
 
     for lineno, line in enumerate(lines[1:], start=2):
         stripped = line.strip()
@@ -166,20 +170,36 @@ def validate_presentation_syntax(lines: List[str]) -> Tuple[bool, str]:
         if info["level"] != lev:
             return False, f"Linha {lineno}: Esperava nível L{lev}, obteve L{info['level']} ({stripped})"
 
+        if lev >= max_lev:
+            return False, f"Linha {lineno}: Nível L{lev} atinge ou excede MAXLEV={max_lev}"
+
         itype = info["type"]
         if itype == "C":
-            c_lines[lineno] = {
-                "level": lev,
-                "vertex": info.get("vertex"),
-                "bound": info.get("bound"),
-            }
+            if len(sym_stack) >= max_sym:
+                return False, f"Linha {lineno}: Limite MAXSYM={max_sym} excedido"
+            sym_stack.append({"number": lineno, "nolines": lev + 1})
+
             lev += 1
-        elif itype == "S":
-            ref = info.get("ref_line")
-            if ref not in c_lines:
-                return False, f"Linha {lineno}: 'S' referencia linha inexistente ou não-C: {ref}"
-            lev -= 1
-        elif itype in ("R", "H"):
+            if lev >= max_lev:
+                return False, f"Linha {lineno}: Próximo nível L{lev} atinge ou excede MAXLEV={max_lev}"
+            continue
+
+        elif itype in ("R", "H", "S"):
+            if itype == "S":
+                ref = info.get("ref_line")
+                active_numbers = [s["number"] for s in sym_stack]
+                if ref not in active_numbers:
+                    return False, f"Linha {lineno}: Simetria {ref} não está ativa na pilha sym[] (ativas: {active_numbers})"
+                t_sym = next(s for s in sym_stack if s["number"] == ref)
+                s_level = info.get("s_level")
+                if t_sym["nolines"] != s_level + 1:
+                    return False, f"Linha {lineno}: Level mismatch na simetria (esperado {t_sym['nolines'] - 1}, obteve {s_level})"
+
+            # Deletar simetrias com o nível lev da folha ANTES de decrementar lev:
+            # (conforme discharge.c linhas 393-396)
+            while sym_stack and sym_stack[-1]["nolines"] - 1 >= lev:
+                sym_stack.pop()
+
             lev -= 1
 
     return True, "Apresentação 100% válida"
@@ -189,6 +209,7 @@ def simulate_axle_at_line(lines: List[str], target_lineno: int) -> Dict:
     """
     Simula o estado do eixo (low[] e upp[]) imediatamente antes da execução
     da linha 1-indexada `target_lineno`.
+    Retorna também a lista exata de branchable_vertices conforme discharge.c.
     """
     if target_lineno < 1 or target_lineno > len(lines):
         raise ValueError(f"target_lineno={target_lineno} fora dos limites")
@@ -215,12 +236,44 @@ def simulate_axle_at_line(lines: List[str], target_lineno: int) -> Dict:
 
     for idx, line in enumerate(lines[1:], start=2):
         if idx == target_lineno:
+            # Calcular branchable_vertices espelhando GetBranchableVertices de discharge.c
+            d = deg
+            branchable = []
+            cur_low = low_stack[lev]
+            cur_upp = upp_stack[lev]
+
+            # 1. Spokes (1 .. d) with open interval
+            for i in range(1, d + 1):
+                if cur_low[i] < cur_upp[i]:
+                    branchable.append(i)
+
+            # 2. Hats (d+1 .. 2*d) and unlocked Fan vertices
+            for s in range(1, d + 1):
+                hat = d + s
+                if cur_low[hat] < cur_upp[hat]:
+                    branchable.append(hat)
+                if cur_low[s] == cur_upp[s]:
+                    deg_s = cur_low[s]
+                    if 6 <= deg_s <= 8:
+                        f1 = 2 * d + s
+                        if cur_low[f1] < cur_upp[f1]:
+                            branchable.append(f1)
+                    if 7 <= deg_s <= 8:
+                        f2 = 3 * d + s
+                        if cur_low[f2] < cur_upp[f2]:
+                            branchable.append(f2)
+                    if deg_s == 8:
+                        f3 = 4 * d + s
+                        if cur_low[f3] < cur_upp[f3]:
+                            branchable.append(f3)
+
             return {
                 "lineno": target_lineno,
                 "level": lev,
                 "degree": deg,
-                "low": list(low_stack[lev]),
-                "upp": list(upp_stack[lev]),
+                "low": list(cur_low),
+                "upp": list(cur_upp),
+                "branchable_vertices": branchable,
                 "raw": line.strip(),
             }
 
@@ -236,7 +289,6 @@ def simulate_axle_at_line(lines: List[str], target_lineno: int) -> Dict:
         if itype == "C":
             n = info["vertex"]
             m = info["bound"]
-            # Copia lev para lev + 1
             for v in range(cartvert):
                 low_stack[lev + 1][v] = low_stack[lev][v]
                 upp_stack[lev + 1][v] = upp_stack[lev][v]

@@ -158,15 +158,17 @@ def verify_discharging(conf_path: Path, forbid_list: List[int], depth: int = 0, 
     return True
 
 
-def solve_leaf_milp(leaf_map: Dict[int, List[Set[int]]], max_cid: int = 891) -> Tuple[int, List[int]]:
+def solve_leaf_milp(leaf_map: Dict[int, List[Set[int]]], max_cid: int = 891, eliminated_cids: List[int] = None) -> Tuple[int, List[int]]:
     """
     Resolve o problema exato de Cobertura de Conjuntos das folhas via HiGHS MILP (scipy.optimize.milp).
+    Permite passar eliminated_cids da Etapa 3.1 para fixar x_c = 0 ou dispensar folhas cobertas por aprofundamento.
     Retorna (cardinalidade_otima, lista_de_cids_selecionados).
     """
+    elim_set = set(eliminated_cids or [])
     all_leaves = []
     for deg in sorted(leaf_map.keys()):
         for leaf in leaf_map[deg]:
-            valid_cids = {c for c in leaf if c <= max_cid}
+            valid_cids = {c for c in leaf if c <= max_cid and c not in elim_set}
             if valid_cids:
                 all_leaves.append(tuple(sorted(valid_cids)))
 
@@ -177,6 +179,8 @@ def solve_leaf_milp(leaf_map: Dict[int, List[Set[int]]], max_cid: int = 891) -> 
     n_vars = len(all_active_cids)
     n_cons = len(unique_sets)
     print(f"\n[MILP] Montando matriz esparsa: {n_vars} variáveis (configurações) x {n_cons} restrições (folhas únicas)...")
+    if elim_set:
+        print(f"[MILP] Excluindo {len(elim_set)} configurações eliminadas diretamente por leaf deepening.")
 
     c = np.ones(n_vars)
     A = dok_matrix((n_cons, n_vars), dtype=float)
@@ -276,7 +280,7 @@ def main():
     print("  ETAPA 3.2: OTIMIZAÇÃO GLOBAL E SUBSTITUIÇÃO 1-POR-K (SUPER-POOL 891)")
     print("=" * 80)
     leaf_map_891 = extract_leaf_matrix(SUPERPOOL_CONF, matrix_dir)
-    opt_size, selected_cids = solve_leaf_milp(leaf_map_891, max_cid=891)
+    opt_size, selected_cids = solve_leaf_milp(leaf_map_891, max_cid=891, eliminated_cids=eliminated_direct)
 
     canon_selected = [c for c in selected_cids if c <= 629]
     candidates_selected = [c for c in selected_cids if c > 629]
