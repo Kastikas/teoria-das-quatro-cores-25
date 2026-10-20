@@ -1892,7 +1892,7 @@ tp_adjmat adjmat;
       adjmat[i][h] = a;
       adjmat[a][i] = h;
       adjmat[h][a] = i;
-      if (A->low[i] == A->upp[i] && A->upp[i] < 12)
+      if (A->upp[i] < 12)
 	 DoFan(deg, i, A->upp[i], adjmat);
    }
 }/* Getadjmat */

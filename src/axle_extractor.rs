@@ -107,7 +107,7 @@ pub fn build_adjmat(axle: &AxleData) -> [[i32; CARTVERT]; CARTVERT] {
         adjmat[a][i] = h as i32;
         adjmat[h][a] = i as i32;
 
-        if axle.low[i] == axle.upp[i] && axle.upp[i] < 12 {
+        if axle.upp[i] < 12 {
             do_fan(deg, i, axle.upp[i], &mut adjmat);
         }
     }
@@ -137,7 +137,112 @@ fn do_fan(deg: usize, i: usize, k: usize, adjmat: &mut [[i32; CARTVERT]; CARTVER
     }
 }
 
-/// Identifies all vertices `w` that have a full, closed cycle of `upp[w]` neighbors in `adjmat`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InternalChain {
+    Closed(Vec<usize>),
+    Open {
+        chain: Vec<usize>,
+        k_ext: usize,
+    },
+}
+
+/// Identifies the chain of neighbors around vertex `w` in `adjmat`.
+/// Returns `Closed(cycle)` if it forms a complete closed wheel of `deg_w` triangles,
+/// or `Open { chain, k_ext }` if it forms a contiguous open chain of length `3 <= m <= deg_w`.
+pub fn get_vertex_chain(
+    w: usize,
+    deg_w: usize,
+    adjmat: &[[i32; CARTVERT]; CARTVERT],
+) -> Option<InternalChain> {
+    if deg_w < 5 || deg_w > 11 {
+        return None;
+    }
+
+    let mut next_map: HashMap<usize, usize> = HashMap::new();
+    let mut has_pred: HashSet<usize> = HashSet::new();
+    let mut all_nodes: HashSet<usize> = HashSet::new();
+
+    for z in 0..CARTVERT {
+        let nxt = adjmat[w][z];
+        if nxt != -1 {
+            let nxt_u = nxt as usize;
+            next_map.insert(z, nxt_u);
+            has_pred.insert(nxt_u);
+            all_nodes.insert(z);
+            all_nodes.insert(nxt_u);
+        }
+    }
+
+    if all_nodes.is_empty() {
+        return None;
+    }
+
+    let starts: Vec<usize> = all_nodes
+        .iter()
+        .copied()
+        .filter(|u| !has_pred.contains(u))
+        .collect();
+
+    if starts.len() == 1 {
+        // Exactly one head -> open chain
+        let start = starts[0];
+        let mut chain = Vec::new();
+        let mut curr = start;
+        let mut visited = HashSet::new();
+
+        while visited.insert(curr) {
+            chain.push(curr);
+            match next_map.get(&curr) {
+                Some(&nxt) => curr = nxt,
+                None => break,
+            }
+        }
+
+        if chain.len() == all_nodes.len() {
+            let m = chain.len();
+            if m >= 3 && m <= deg_w {
+                if m == deg_w && next_map.get(&chain[m - 1]) == Some(&chain[0]) {
+                    return Some(InternalChain::Closed(chain));
+                } else if m < deg_w {
+                    return Some(InternalChain::Open {
+                        chain,
+                        k_ext: deg_w - m,
+                    });
+                }
+            }
+        }
+    } else if starts.is_empty() {
+        // Pure cycle
+        let (&first, _) = next_map.iter().next()?;
+        let mut cycle = Vec::new();
+        let mut curr = first;
+        let mut visited = HashSet::new();
+
+        while visited.insert(curr) {
+            cycle.push(curr);
+            match next_map.get(&curr) {
+                Some(&nxt) => {
+                    if nxt == first {
+                        break;
+                    }
+                    curr = nxt;
+                }
+                None => return None,
+            }
+        }
+
+        if cycle.len() == deg_w && cycle.len() == all_nodes.len() {
+            return Some(InternalChain::Closed(cycle));
+        }
+    }
+
+    None
+}
+
+/// Identifies all vertices `w` that are eligible to be internal vertices in extracted configurations.
+/// Closed vertices (spokes/center/others) with full cycles are eligible.
+/// Hats (d+1..=2*d) and unblocked fans (2*d+1..=8*d) with 5 <= upp[w] <= 11 and open chains
+/// of length 3 <= m <= upp[w] are also eligible.
 pub fn find_eligible_internals(axle: &AxleData, adjmat: &[[i32; CARTVERT]; CARTVERT]) -> Vec<usize> {
     let d = axle.pres_deg;
     let mut eligible = Vec::new();
@@ -157,45 +262,146 @@ pub fn find_eligible_internals(axle: &AxleData, adjmat: &[[i32; CARTVERT]; CARTV
                 continue;
             }
         }
-        // Check closed cycle of length deg_w
-        let mut start_z = None;
-        for z in 0..=8 * d {
-            if adjmat[w][z] != -1 {
-                start_z = Some(z);
-                break;
-            }
-        }
-        if let Some(first_z) = start_z {
-            let mut curr = first_z;
-            let mut count = 0;
-            let mut is_closed = false;
-            let mut visited = HashSet::new();
 
-            while count <= deg_w + 1 {
-                visited.insert(curr);
-                let next = adjmat[w][curr];
-                if next == -1 {
-                    break;
+        if let Some(chain_info) = get_vertex_chain(w, deg_w, adjmat) {
+            match chain_info {
+                InternalChain::Closed(_) => {
+                    eligible.push(w);
                 }
-                let next_u = next as usize;
-                count += 1;
-                if next_u == first_z {
-                    if count == deg_w && visited.len() == deg_w {
-                        is_closed = true;
+                InternalChain::Open { .. } => {
+                    if w > d {
+                        eligible.push(w);
                     }
-                    break;
                 }
-                if visited.contains(&next_u) {
-                    break;
-                }
-                curr = next_u;
-            }
-            if is_closed {
-                eligible.push(w);
             }
         }
     }
     eligible
+}
+
+/// Simulates `GetQuestion` of `src/discharge.c` to verify that every internal vertex
+/// of `conf` is reached and queried by the triangular reconstruction traversal.
+pub fn is_fully_queried_by_get_question(conf: &Configuration) -> bool {
+    let nverts = conf.verts();
+    let ring = conf.ring();
+    if nverts <= ring {
+        return false;
+    }
+
+    let mut found = vec![false; nverts + 1];
+
+    // Q[0].z = vertex with maximum degree among internal vertices
+    let mut max_deg = 0;
+    let mut best = 0;
+    for v in (ring + 1)..=nverts {
+        let d = conf.mat[v][0];
+        if d > max_deg {
+            max_deg = d;
+            best = v;
+        }
+    }
+    if best == 0 {
+        return false;
+    }
+    found[best] = true;
+
+    // Q[1].z = internal neighbor of best with maximum degree
+    let mut second_max = 0;
+    let mut secondbest = 0;
+    let best_deg = conf.mat[best][0];
+    for i in 1..=best_deg {
+        let v = conf.mat[best][i];
+        if v <= ring {
+            continue;
+        }
+        let d = conf.mat[v][0];
+        if d > second_max {
+            second_max = d;
+            secondbest = v;
+        }
+    }
+    if secondbest == 0 {
+        return false;
+    }
+    found[secondbest] = true;
+
+    let mut q_z = Vec::new();
+    q_z.push(best);
+    q_z.push(secondbest);
+
+    let mut search = 0;
+    while search < q_z.len() {
+        let v = q_z[search];
+        search += 1;
+        if v <= ring {
+            continue;
+        }
+        let d = conf.mat[v][0];
+        let mut i = 1;
+        while i <= d && !found[conf.mat[v][i]] {
+            i += 1;
+        }
+        if i > d {
+            continue;
+        }
+
+        let mut h = if i == 1 { d } else { i - 1 };
+        while h != i {
+            let u = conf.mat[v][h];
+            if u <= ring {
+                break;
+            }
+            if !found[u] {
+                q_z.push(u);
+                found[u] = true;
+            }
+            h = if h == 1 { d } else { h - 1 };
+        }
+        if h == i {
+            continue;
+        }
+
+        let mut j = if i == d { 1 } else { i + 1 };
+        loop {
+            let w = conf.mat[v][j];
+            if w <= ring {
+                break;
+            }
+            if !found[w] {
+                q_z.push(w);
+                found[w] = true;
+            }
+            j = if j == d { 1 } else { j + 1 };
+        }
+
+        let r = if h >= j { h - j } else { (h + d) - j };
+        if r <= 2 {
+            continue;
+        }
+
+        let u = conf.mat[v][h];
+        if !found[u] {
+            q_z.push(u);
+            found[u] = true;
+        }
+
+        let mut g = if h == 1 { d } else { h - 1 };
+        while g != j {
+            let t = conf.mat[v][g];
+            if t > ring && !found[t] {
+                q_z.push(t);
+                found[t] = true;
+            }
+            g = if g == 1 { d } else { g - 1 };
+        }
+    }
+
+    for u in (ring + 1)..=nverts {
+        if !found[u] {
+            return false;
+        }
+    }
+    true
 }
 
 /// Helper to get the full ordered clockwise cyclic list of neighbors around an eligible internal vertex.
@@ -204,27 +410,11 @@ pub fn get_internal_cyclic_neighbors(
     deg_u: usize,
     adjmat: &[[i32; CARTVERT]; CARTVERT],
 ) -> Vec<usize> {
-    let mut res = Vec::with_capacity(deg_u);
-    // Find first neighbor
-    let mut start = None;
-    for z in 0..CARTVERT {
-        if adjmat[u][z] != -1 {
-            start = Some(z);
-            break;
-        }
+    match get_vertex_chain(u, deg_u, adjmat) {
+        Some(InternalChain::Closed(cycle)) => cycle,
+        Some(InternalChain::Open { chain, .. }) => chain,
+        None => Vec::new(),
     }
-    if let Some(first) = start {
-        let mut curr = first;
-        for _ in 0..deg_u {
-            res.push(curr);
-            let next = adjmat[u][curr];
-            if next == -1 {
-                break;
-            }
-            curr = next as usize;
-        }
-    }
-    res
 }
 
 /// Extracts all admissible RSST planar configurations from a given axle with ring size in `[min_ring, max_ring]`.
@@ -240,14 +430,24 @@ pub fn extract_configurations_from_axle(
         return Vec::new();
     }
 
+    // Pre-calculate chain_info for eligible vertices
+    let mut vertex_chains: HashMap<usize, InternalChain> = HashMap::new();
+    for &u in &eligible {
+        if let Some(chain) = get_vertex_chain(u, axle.upp[u], &adjmat) {
+            vertex_chains.insert(u, chain);
+        }
+    }
+
     // Build internal adjacency map
     let eligible_set: HashSet<usize> = eligible.iter().copied().collect();
     let mut int_adj: HashMap<usize, Vec<usize>> = HashMap::new();
     for &u in &eligible {
-        let deg_u = axle.upp[u];
-        let nbs = get_internal_cyclic_neighbors(u, deg_u, &adjmat);
+        let chain_nbs = match &vertex_chains[&u] {
+            InternalChain::Closed(c) => c,
+            InternalChain::Open { chain, .. } => chain,
+        };
         let mut el_nbs = Vec::new();
-        for &nb in &nbs {
+        for &nb in chain_nbs {
             if eligible_set.contains(&nb) {
                 el_nbs.push(nb);
             }
@@ -342,30 +542,60 @@ pub fn extract_configurations_from_axle(
             continue;
         }
 
-        // 2. Extract directed boundary edges
-        // Every u in S has a closed cycle of triangles in adjmat.
-        // If v not in S and w not in S, directed edge v -> w is on the boundary.
+        // 2. Open chain endpoint check:
+        // When w with open chain is in S, endpoints z_1 and z_m must NOT be in S
+        let mut endpoints_outside = true;
+        for &w in &s_vec {
+            if let Some(InternalChain::Open { chain, .. }) = vertex_chains.get(&w) {
+                let z1 = chain[0];
+                let zm = chain[chain.len() - 1];
+                if s_set.contains(&z1) || s_set.contains(&zm) {
+                    endpoints_outside = false;
+                    break;
+                }
+            }
+        }
+        if !endpoints_outside {
+            continue;
+        }
+
+        // 3. Build full cyclic neighbor list N(u) for each u in S,
+        // inserting virtual ring vertices for open chains.
+        let mut full_neighbors: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut virtual_parents: HashMap<usize, usize> = HashMap::new();
+        let mut virtual_vertex_count = 0;
+
+        for &u in &s_vec {
+            match &vertex_chains[&u] {
+                InternalChain::Closed(cycle) => {
+                    full_neighbors.insert(u, cycle.clone());
+                }
+                InternalChain::Open { chain, k_ext } => {
+                    let mut nbs = chain.clone();
+                    for _ in 0..*k_ext {
+                        virtual_vertex_count += 1;
+                        let y = CARTVERT + virtual_vertex_count;
+                        virtual_parents.insert(y, u);
+                        nbs.push(y);
+                    }
+                    full_neighbors.insert(u, nbs);
+                }
+            }
+        }
+
+        // 4. Extract directed boundary edges
         let mut bnd_next: HashMap<usize, usize> = HashMap::new();
         let mut bnd_prev: HashMap<usize, usize> = HashMap::new();
         let mut boundary_valid = true;
 
         for &u in &s_vec {
-            let deg_u = axle.upp[u];
-            let nbs = get_internal_cyclic_neighbors(u, deg_u, &adjmat);
-            if nbs.len() != deg_u {
-                boundary_valid = false;
-                break;
-            }
+            let nbs = &full_neighbors[&u];
+            let deg_u = nbs.len();
             for j in 0..deg_u {
                 let v = nbs[j];
                 let w = nbs[(j + 1) % deg_u];
                 if !s_set.contains(&v) && !s_set.contains(&w) {
-                    if bnd_next.contains_key(&v) {
-                        // In-degree or out-degree > 1 -> not a simple boundary cycle
-                        boundary_valid = false;
-                        break;
-                    }
-                    if bnd_prev.contains_key(&w) {
+                    if bnd_next.contains_key(&v) || bnd_prev.contains_key(&w) {
                         boundary_valid = false;
                         break;
                     }
@@ -387,7 +617,7 @@ pub fn extract_configurations_from_axle(
             continue;
         }
 
-        // 3. Verify that the boundary edges form a SINGLE connected simple cycle
+        // 5. Verify boundary cycle connectivity
         let (&first_v, _) = bnd_next.iter().next().unwrap();
         let mut cycle = Vec::with_capacity(ring_size);
         let mut curr = first_v;
@@ -402,7 +632,6 @@ pub fn extract_configurations_from_axle(
                         break;
                     }
                     if cycle_visited.contains(&next_v) {
-                        // Sub-cycle detected
                         boundary_valid = false;
                         break;
                     }
@@ -419,8 +648,7 @@ pub fn extract_configurations_from_axle(
             continue;
         }
 
-        // 4. Verify Euler degree sum
-        // Ring vertices x in cycle: degree in configuration = 2 + number of internal neighbors in S
+        // 6. Verify Euler degree sum and ring vertex degrees
         let expected_euler_sum = 6 * (s_len + ring_size - 1) - 2 * ring_size;
         let mut actual_deg_sum = 0;
 
@@ -428,20 +656,22 @@ pub fn extract_configurations_from_axle(
             actual_deg_sum += axle.upp[u];
         }
 
-        // Ring degrees
         let mut ring_degrees = Vec::with_capacity(ring_size);
         let mut ring_admiss = true;
+
         for &x in &cycle {
-            // Count internal neighbors in S
-            let mut int_nb_count = 0;
-            for &u in &s_vec {
-                let deg_u = axle.upp[u];
-                let nbs = get_internal_cyclic_neighbors(u, deg_u, &adjmat);
-                if nbs.contains(&x) {
-                    int_nb_count += 1;
+            let d_x = if x > CARTVERT {
+                3
+            } else {
+                let mut int_nb_count = 0;
+                for &u in &s_vec {
+                    if full_neighbors[&u].contains(&x) {
+                        int_nb_count += 1;
+                    }
                 }
-            }
-            let d_x = 2 + int_nb_count;
+                2 + int_nb_count
+            };
+
             if d_x < 3 || d_x >= 13 {
                 ring_admiss = false;
                 break;
@@ -454,7 +684,7 @@ pub fn extract_configurations_from_axle(
             continue;
         }
 
-        // 5. Construct Configuration
+        // 7. Construct Configuration
         let total_n = ring_size + s_len;
         let mut conf = Configuration::new(
             0,
@@ -477,10 +707,9 @@ pub fn extract_configurations_from_axle(
         // Fill internal vertex adjacencies
         for (idx, &u) in s_vec.iter().enumerate() {
             let conf_u = ring_size + idx + 1;
-            let deg_u = axle.upp[u];
-            let cart_nbs = get_internal_cyclic_neighbors(u, deg_u, &adjmat);
-            let mut conf_nbs = Vec::with_capacity(deg_u);
-            for nb in cart_nbs {
+            let nbs = &full_neighbors[&u];
+            let mut conf_nbs = Vec::with_capacity(nbs.len());
+            for &nb in nbs {
                 if let Some(&cnb) = cart_to_conf.get(&nb) {
                     conf_nbs.push(cnb);
                 } else {
@@ -488,7 +717,7 @@ pub fn extract_configurations_from_axle(
                     break;
                 }
             }
-            if !ring_admiss || conf_nbs.len() != deg_u {
+            if !ring_admiss || conf_nbs.len() != axle.upp[u] {
                 ring_admiss = false;
                 break;
             }
@@ -499,8 +728,6 @@ pub fn extract_configurations_from_axle(
         }
 
         // Fill ring vertex adjacencies
-        // For ring vertex k (cartwheel x):
-        // neighbors must be: [next, int_1, int_2, ..., prev]
         for k in 1..=ring_size {
             let x = cycle[k - 1];
             let next_k = if k == ring_size { 1 } else { k + 1 };
@@ -508,77 +735,83 @@ pub fn extract_configurations_from_axle(
             let next_x = cycle[next_k - 1];
             let prev_x = cycle[prev_k - 1];
 
-            // Find unique internal vertex u in S that has adjmat[u][x] == next_x
-            let mut u_start = None;
-            for &u in &s_vec {
-                if adjmat[u][x] == next_x as i32 {
-                    u_start = Some(u);
-                    break;
-                }
-            }
-
-            let u_first = match u_start {
-                Some(u) => u,
-                None => {
-                    ring_admiss = false;
-                    break;
-                }
-            };
-
-            let mut ordered_nbs = Vec::new();
-            ordered_nbs.push(next_k);
-
-            let mut curr_u = u_first;
-            let mut count_steps = 0;
-            loop {
-                ordered_nbs.push(cart_to_conf[&curr_u]);
-                count_steps += 1;
-                if count_steps > 15 {
-                    ring_admiss = false;
-                    break;
-                }
-                // In curr_u's list: find z such that adjmat[curr_u][z] == x
-                let deg_curr = axle.upp[curr_u];
-                let nbs = get_internal_cyclic_neighbors(curr_u, deg_curr, &adjmat);
-                let mut z_opt = None;
-                for j in 0..deg_curr {
-                    if nbs[(j + 1) % deg_curr] == x {
-                        z_opt = Some(nbs[j]);
+            if x > CARTVERT {
+                let parent_w = virtual_parents[&x];
+                let conf_w = cart_to_conf[&parent_w];
+                conf.set_vertex(k, &[next_k, conf_w, prev_k]);
+            } else {
+                let mut u_first = None;
+                for &u in &s_vec {
+                    let nbs = &full_neighbors[&u];
+                    let d_u = nbs.len();
+                    for j in 0..d_u {
+                        if nbs[j] == x && nbs[(j + 1) % d_u] == next_x {
+                            u_first = Some(u);
+                            break;
+                        }
+                    }
+                    if u_first.is_some() {
                         break;
                     }
                 }
-                let z = match z_opt {
-                    Some(z_val) => z_val,
+
+                let u_start = match u_first {
+                    Some(u) => u,
                     None => {
                         ring_admiss = false;
                         break;
                     }
                 };
 
-                if s_set.contains(&z) {
-                    curr_u = z;
-                } else {
-                    if z != prev_x {
+                let mut ordered_nbs = Vec::new();
+                ordered_nbs.push(next_k);
+
+                let mut curr_u = u_start;
+                let mut count_steps = 0;
+                loop {
+                    ordered_nbs.push(cart_to_conf[&curr_u]);
+                    count_steps += 1;
+                    if count_steps > 15 {
                         ring_admiss = false;
+                        break;
                     }
+
+                    let nbs = &full_neighbors[&curr_u];
+                    let d_u = nbs.len();
+                    let j_pos = match nbs.iter().position(|&nb| nb == x) {
+                        Some(pos) => pos,
+                        None => {
+                            ring_admiss = false;
+                            break;
+                        }
+                    };
+                    let z = nbs[(j_pos + d_u - 1) % d_u];
+
+                    if s_set.contains(&z) {
+                        curr_u = z;
+                    } else {
+                        if z != prev_x {
+                            ring_admiss = false;
+                        }
+                        break;
+                    }
+                }
+
+                if !ring_admiss {
                     break;
                 }
-            }
 
-            if !ring_admiss {
-                break;
+                ordered_nbs.push(prev_k);
+                conf.set_vertex(k, &ordered_nbs);
             }
-
-            ordered_nbs.push(prev_k);
-            conf.set_vertex(k, &ordered_nbs);
         }
 
         if !ring_admiss {
             continue;
         }
 
-        // 6. Strict RSST Admissibility Certification
-        if conf.check_rsst_admissibility().is_ok() {
+        // 8. Strict RSST Admissibility & GetQuestion Queryability Certification
+        if conf.check_rsst_admissibility().is_ok() && is_fully_queried_by_get_question(&conf) {
             let sig = canonical_dihedral_signature(&conf);
             if seen_signatures.insert(sig) {
                 conf.id = extracted_confs.len() + 1;
@@ -597,6 +830,7 @@ pub type DihedralSignature = (usize, usize, Vec<(usize, usize)>);
 /// indexed by their canonical dihedral signature.
 pub struct DihedralIntersectionFunnel {
     pub ring_size: usize,
+    pub axles: Vec<AxleData>,
     /// Maps DihedralSignature -> (Configuration, HashSet<AxleIndex>)
     pub candidates: HashMap<DihedralSignature, (Configuration, HashSet<usize>)>,
     /// Maps canonical conf ID -> HashSet<AxleIndex> (which axles rely on this canonical configuration)
@@ -607,6 +841,7 @@ impl DihedralIntersectionFunnel {
     pub fn new(ring_size: usize) -> Self {
         Self {
             ring_size,
+            axles: Vec::new(),
             candidates: HashMap::new(),
             canonical_axle_deps: HashMap::new(),
         }
@@ -614,12 +849,17 @@ impl DihedralIntersectionFunnel {
 
     /// Feeds axles into the funnel, extracting all valid configurations of `ring_size`.
     pub fn feed_axles(&mut self, axles: &[AxleData]) {
+        self.axles = axles.to_vec();
         for (axle_idx, axle) in axles.iter().enumerate() {
             for &conf_id in &axle.matching_confs {
                 self.canonical_axle_deps
                     .entry(conf_id)
                     .or_default()
                     .insert(axle_idx);
+            }
+
+            if axle.matching_confs.is_empty() || axle.matching_confs.len() > 2 {
+                continue;
             }
 
             let extracted = extract_configurations_from_axle(axle, self.ring_size, self.ring_size);
@@ -662,11 +902,22 @@ impl DihedralIntersectionFunnel {
                     continue;
                 }
 
-                let mut union_axles: HashSet<usize> = axles_a.clone();
-                union_axles.extend(axles_b.iter().copied());
+                let exclusive_union: HashSet<usize> = axles_a
+                    .union(axles_b)
+                    .copied()
+                    .filter(|&ax_idx| {
+                        self.axles[ax_idx]
+                            .matching_confs
+                            .iter()
+                            .all(|&c| c == id_a || c == id_b)
+                    })
+                    .collect();
+                if exclusive_union.is_empty() {
+                    continue;
+                }
 
                 for (_, (cand, covered)) in &self.candidates {
-                    let missing = union_axles.difference(covered).count();
+                    let missing = exclusive_union.difference(covered).count();
                     if missing <= 1 {
                         replacements.push((cand.clone(), vec![id_a, id_b], missing));
                     }
@@ -776,5 +1027,54 @@ mod tests {
             let is_certified = certify_candidate(&mut cand, &engine);
             println!("Candidate {} (ring={}): certified={}", cand.name, cand.ring(), is_certified);
         }
+    }
+
+    #[test]
+    fn test_supervisor_exclusive_union_and_open_chain_extraction() {
+        // 1. Test get_vertex_chain on hat with open chain
+        let json = r#"{"pres_deg":11,"lineno":3,"astack_depth":0,"low":[11,8,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],"upp":[11,12,5,5,5,12,12,12,12,12,12,12,12,5,5,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12],"matching_confs":[1]}"#;
+        let axle = AxleData::from_json_line(json).expect("valid axle");
+        let adjmat = build_adjmat(&axle);
+
+        // Hat 13 has upp[13] = 5 and open chain [14, 3, 2, 12]
+        let chain_13 = get_vertex_chain(13, axle.upp[13], &adjmat);
+        assert!(chain_13.is_some(), "Hat 13 must have a valid chain");
+        match chain_13.unwrap() {
+            InternalChain::Open { chain, k_ext } => {
+                assert_eq!(chain, vec![14, 3, 2, 12]);
+                assert_eq!(k_ext, 1, "k_ext must be upp[13] - 4 = 5 - 4 = 1");
+            }
+            InternalChain::Closed(_) => panic!("Hat 13 should be an open chain, not closed"),
+        }
+
+        // 2. Test exclusive_union filter in DihedralIntersectionFunnel
+        let mut axle0 = axle.clone();
+        axle0.matching_confs = vec![10, 20]; // Exclusive to {10, 20}
+        let mut axle1 = axle.clone();
+        axle1.matching_confs = vec![10, 30]; // Matches 30, so not exclusive to {10, 20}
+        let mut axle2 = axle.clone();
+        axle2.matching_confs = vec![10, 20, 30]; // 3 matches -> skipped in feed_axles, excluded from exclusive_union
+
+        let mut funnel = DihedralIntersectionFunnel::new(6);
+        funnel.feed_axles(&[axle0, axle1, axle2]);
+
+        // Axle 2 has 3 matching confs, so it must not be in canonical_axle_deps or candidates
+        assert_eq!(funnel.axles.len(), 3);
+        // Find super replacements
+        let _replacements = funnel.find_super_replacements();
+        // Check that any replacement evaluated strictly exclusive axles
+        let axles_10 = &funnel.canonical_axle_deps[&10];
+        let axles_20 = &funnel.canonical_axle_deps[&20];
+        let exclusive: HashSet<usize> = axles_10
+            .union(axles_20)
+            .copied()
+            .filter(|&idx| {
+                funnel.axles[idx]
+                    .matching_confs
+                    .iter()
+                    .all(|&c| c == 10 || c == 20)
+            })
+            .collect();
+        assert_eq!(exclusive, [0].iter().copied().collect::<HashSet<usize>>());
     }
 }
