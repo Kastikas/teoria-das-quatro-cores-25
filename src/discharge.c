@@ -28,6 +28,9 @@ int max_deepen_depth = 0;
 int forbidden_conf[10000];
 int num_forbidden = 0;
 long leaf_counter = 0;
+int dump_axles_mode = 0;
+char dump_axles_file[256] = "";
+FILE *dump_axles_fp = NULL;
 
 #define MAX_PATCH_LINES 128
 #define MAX_PATCHES 10000
@@ -260,6 +263,22 @@ char *av[];
             (void) fprintf(stderr, "Error: -p requires patch file path\n");
             exit(1);
          }
+      } else if (strcmp(av[1], "--dump-axles") == 0) {
+         if (ac > 2) {
+            dump_axles_mode = 1;
+            (void) strncpy(dump_axles_file, av[2], sizeof(dump_axles_file) - 1);
+            dump_axles_file[sizeof(dump_axles_file) - 1] = '\0';
+            dump_axles_fp = fopen(dump_axles_file, "a");
+            if (dump_axles_fp == NULL) {
+               (void) fprintf(stderr, "Error opening dump axles file '%s'\n", dump_axles_file);
+               exit(1);
+            }
+            ac -= 2;
+            av += 2;
+         } else {
+            (void) fprintf(stderr, "Error: --dump-axles requires output file path\n");
+            exit(1);
+         }
       } else {
          break;
       }
@@ -267,7 +286,7 @@ char *av[];
 
    printmode = prtline = 0;
    if (ac < 4) { // jps
-      (void) fprintf(stderr, "Usage: %s [-t] [-m] [-d <depth>] [-f <id1,id2,...>] [-p <patch_file>] <presentation file> <configuration file> <rule file> [<lineno> <print mode>]\n", av[0]);
+      (void) fprintf(stderr, "Usage: %s [-t] [-m] [-d <depth>] [-f <id1,id2,...>] [-p <patch_file>] [--dump-axles <output_file.jsonl>] <presentation file> <configuration file> <rule file> [<lineno> <print mode>]\n", av[0]);
       (void) fprintf(stderr, "If lineno is given and is positive will print details about that line.\n");
       (void) fprintf(stderr, "If lineno is 0 will print details about all lines. ");
       (void) fprintf(stderr, "Print modes are:\n");
@@ -455,6 +474,11 @@ char *av[];
        }
        printf("\n[ESTATISTICA] Configuracoes usadas neste script: %d / %d (Total de reducoes no script: %d)\n", used_count, global_noconf, total_reduces);
    }
+   if (dump_axles_fp) {
+      fflush(dump_axles_fp);
+      fclose(dump_axles_fp);
+      dump_axles_fp = NULL;
+   }
    return (0);
 }/* main */
 
@@ -468,6 +492,11 @@ Error(message, lineno)
 char message[];
 int lineno;
 {
+   if (dump_axles_fp) {
+      fflush(dump_axles_fp);
+      fclose(dump_axles_fp);
+      dump_axles_fp = NULL;
+   }
    fflush(stdout);
    (void) fprintf(stderr, "%s on line %d\n", message, lineno);
    exit(lineno);
@@ -1138,6 +1167,7 @@ tp_axle *A;
    int h, i, j, v, redring, redverts;
    int a, b, k, qa, qb, b_cnt, *b_list;
    static int naxles;
+   static int astack_depth[MAXASTACK];
    static tp_edgelist edgelist;
    static tp_adjmat adjmat;
    static tp_vertices image;
@@ -1221,14 +1251,61 @@ tp_axle *A;
    if (print)
       (void) printf("Testing reducibility. Putting input axle on stack.\n");
    CopyAxle(Astack[0], A);
+   astack_depth[0] = 0;
    for (naxles = 1; naxles > 0;) {
-      CopyAxle(B, Astack[--naxles]);
+      int cur_depth = astack_depth[--naxles];
+      CopyAxle(B, Astack[naxles]);
       if (print) {
 	 (void) printf("Axle from stack:");
 	 PrintAxle(B);
       }
       Getadjmat(B, adjmat);
       GetEdgelist(B, edgelist);
+
+      if (dump_axles_mode && lineno > 0) {
+         int num_matching = 0;
+         static int matching_confs[CONFS];
+         for (a = 5; a <= 11; a++) {
+            for (b = 5; b < BUCKET_DEG_B && b <= a; b++) {
+               if (edgelist[a][b][0] == 0) continue;
+               b_cnt = bucket_count[a][b];
+               if (b_cnt == 0) continue;
+               b_list = bucket_confs[a][b];
+               for (k = 0; k < b_cnt; k++) {
+                  h = b_list[k];
+                  if (forbidden_conf[h]) continue;
+                  if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
+                     matching_confs[num_matching++] = h + 1;
+                  }
+               }
+            }
+         }
+         for (k = 0; k < unbucketed_count; k++) {
+            h = unbucketed_confs[k];
+            if (forbidden_conf[h]) continue;
+            if (SubConf(adjmat, B->upp, redquestions[h], edgelist, image)) {
+               matching_confs[num_matching++] = h + 1;
+            }
+         }
+         if (dump_axles_fp) {
+            int d = B->low[0];
+            int max_v = 8 * d;
+            fprintf(dump_axles_fp, "{\"pres_deg\":%d,\"lineno\":%d,\"astack_depth\":%d,\"low\":[", d, lineno, cur_depth);
+            for (i = 0; i <= max_v; i++) {
+               fprintf(dump_axles_fp, "%s%d", (i > 0 ? "," : ""), B->low[i]);
+            }
+            fprintf(dump_axles_fp, "],\"upp\":[");
+            for (i = 0; i <= max_v; i++) {
+               fprintf(dump_axles_fp, "%s%d", (i > 0 ? "," : ""), B->upp[i]);
+            }
+            fprintf(dump_axles_fp, "],\"matching_confs\":[");
+            for (i = 0; i < num_matching; i++) {
+               fprintf(dump_axles_fp, "%s%d", (i > 0 ? "," : ""), matching_confs[i]);
+            }
+            fprintf(dump_axles_fp, "]}\n");
+            fflush(dump_axles_fp);
+         }
+      }
 
       if (matrix_mode && lineno > 0) {
          int found_any = 0;
@@ -1347,6 +1424,7 @@ tp_axle *A;
 	 }
 	 CopyAxle(Astack[naxles], B);
 	 Astack[naxles]->upp[v] = B->upp[v] - 1;
+	 astack_depth[naxles] = cur_depth + 1;
 	 naxles++;
       }
 

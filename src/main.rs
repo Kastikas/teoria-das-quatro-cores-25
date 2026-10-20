@@ -1,4 +1,5 @@
 mod analyzer;
+mod axle_extractor;
 mod flipper;
 mod fusion;
 mod graph;
@@ -16,41 +17,7 @@ use std::io::Write;
 use std::time::Instant;
 
 fn format_configuration(conf: &Configuration) -> String {
-    let verts = conf.verts();
-    let ring = conf.ring();
-    let extent = conf.extent_claim();
-    let max_cons = conf.max_cons_subset();
-    let mut out = String::new();
-    out.push_str(&format!("{}\n", conf.name));
-    out.push_str(&format!("{} {} {} {}\n", verts, ring, extent, max_cons));
-    if conf.contract_edges.is_empty() {
-        out.push_str(" 0 \n");
-    } else {
-        out.push_str(&format!(" {}", conf.contract_edges.len()));
-        for (u, v) in &conf.contract_edges {
-            out.push_str(&format!(" {} {}", u, v));
-        }
-        out.push('\n');
-    }
-    for v in 1..=verts {
-        let deg = conf.mat[v][0];
-        out.push_str(&format!("  {:2} {:2}\t", v, deg));
-        for i in 1..=deg {
-            out.push_str(&format!(" {:2}", conf.mat[v][i]));
-        }
-        out.push('\n');
-    }
-    let mut coord_count = 0;
-    while coord_count < verts {
-        let chunk = (verts - coord_count).min(8);
-        for _ in 0..chunk {
-            out.push_str(" 1000");
-        }
-        out.push('\n');
-        coord_count += chunk;
-    }
-    out.push('\n');
-    out
+    conf.to_conf_format()
 }
 
 fn canonical_edge_signature(conf: &Configuration) -> (usize, usize, Vec<(usize, usize)>) {

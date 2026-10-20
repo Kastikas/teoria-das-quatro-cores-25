@@ -225,6 +225,45 @@ impl Configuration {
     pub fn is_geometrically_admissible(&self) -> bool {
         self.check_rsst_admissibility().is_ok()
     }
+
+    /// Formats the configuration into canonical RSST .conf format.
+    pub fn to_conf_format(&self) -> String {
+        let verts = self.verts();
+        let ring = self.ring();
+        let extent = self.extent_claim();
+        let max_cons = self.max_cons_subset();
+        let mut out = String::new();
+        out.push_str(&format!("{}\n", self.name));
+        out.push_str(&format!("{} {} {} {}\n", verts, ring, extent, max_cons));
+        if self.contract_edges.is_empty() {
+            out.push_str(" 0\n");
+        } else {
+            out.push_str(&format!(" {}", self.contract_edges.len()));
+            for &(u, v) in &self.contract_edges {
+                out.push_str(&format!(" {} {}", u, v));
+            }
+            out.push('\n');
+        }
+        for v in 1..=verts {
+            let deg = self.mat[v][0];
+            out.push_str(&format!("  {:2} {:2}\t", v, deg));
+            for i in 1..=deg {
+                out.push_str(&format!(" {:2}", self.mat[v][i]));
+            }
+            out.push('\n');
+        }
+        let mut coord_count = 0;
+        while coord_count < verts {
+            let chunk = (verts - coord_count).min(8);
+            for _ in 0..chunk {
+                out.push_str(" 1000");
+            }
+            out.push('\n');
+            coord_count += chunk;
+        }
+        out.push('\n');
+        out
+    }
 }
 
 /// Computes the canonical edge signature of a planar configuration modulo the dihedral
